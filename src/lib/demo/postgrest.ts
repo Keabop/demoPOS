@@ -72,7 +72,7 @@ export function parseSelect(sel: string, base = ''): Field[] {
     const head = p.slice(0, paren).trim();
     const inner = p.slice(paren + 1, p.lastIndexOf(')'));
     let alias: string | null = null, fkHint: string | null = null;
-    let embedName = head;
+    const embedName = head;
     if (head.includes(':')) {
       const [a, b] = head.split(':');
       alias = a.trim(); fkHint = b.trim();

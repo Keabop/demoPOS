@@ -2,6 +2,14 @@ import React, { useState } from 'react';
 import { Icon } from '../../components/Icon';
 import { useAuth } from './AuthContext';
 import { useConfig } from '../config/ConfigContext';
+import { DEMO_USERS } from '../../lib/demo/auth';
+
+// Etiqueta corta por rol para los botones de acceso rápido (demo).
+const ROL_LABEL: Record<string, string> = {
+  admin: 'Admin',
+  vendedor: 'Técnico',
+  visitante: 'Ventas',
+};
 
 export const Login: React.FC = () => {
   const { login } = useAuth();
@@ -13,13 +21,13 @@ export const Login: React.FC = () => {
   const [errorMsg, setErrorMsg] = useState('');
   const [showPass, setShowPass] = useState(false);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  // Lógica de inicio de sesión compartida entre el formulario y el acceso rápido (demo).
+  const runLogin = async (correo: string, contrasena: string) => {
     setLoading(true);
     setErrorMsg('');
 
     try {
-      const res = await login(email, pass);
+      const res = await login(correo, contrasena);
       if (!res.success) {
         setErrorMsg(res.error || 'Credenciales incorrectas');
       }
@@ -32,6 +40,11 @@ export const Login: React.FC = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await runLogin(email, pass);
   };
 
   return (
@@ -66,10 +79,10 @@ export const Login: React.FC = () => {
           <div style={{ display: 'flex', alignItems: 'center', gap: 16, position: 'relative', fontSize: 12, color: '#7d8a83' }}>
             <div style={{display:'flex', alignItems:'center', gap: 6}}>
               <span style={{width: 6, height: 6, borderRadius: 999, background: 'var(--green)'}}></span>
-              Servidor en línea
+              Demo interactiva
             </div>
             <span>·</span>
-            <span>Conectado a Supabase</span>
+            <span>Datos locales en tu navegador</span>
           </div>
         </div>
 
@@ -137,6 +150,27 @@ export const Login: React.FC = () => {
               {!loading && <Icon name="arrow-right" size={18} />}
             </button>
           </form>
+
+          {/* Acceso rápido (demo): inicia sesión con un usuario de ejemplo por rol. */}
+          <div style={{ marginTop: 24, paddingTop: 20, borderTop: '1px solid var(--line)' }}>
+            <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 12 }}>
+              Acceso rápido (demo)
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
+              {DEMO_USERS.map(u => (
+                <button
+                  key={u.id}
+                  type="button"
+                  className="btn btn-secondary btn-block"
+                  disabled={loading}
+                  onClick={() => runLogin(u.email, u.pass)}
+                  title={u.nombre}
+                >
+                  {ROL_LABEL[u.rol] ?? u.rol}
+                </button>
+              ))}
+            </div>
+          </div>
 
           <div style={{ marginTop: 22, paddingTop: 18, borderTop: '1px solid var(--line)', fontSize: 12, color: 'var(--muted)', display:'flex', justifyContent: 'space-between' }}>
             <span>© 2026 {config.nombre}</span>

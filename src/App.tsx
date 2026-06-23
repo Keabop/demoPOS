@@ -12,6 +12,7 @@ import { Caja } from './features/pos/Caja';
 import { Sidebar } from './components/Sidebar';
 import { Icon } from './components/Icon';
 import { ToastHost } from './components/ToastHost';
+import { DemoBanner } from './components/DemoBanner';
 import { ConfigProvider } from './features/config/ConfigContext';
 import { Configuracion } from './features/config/Configuracion';
 import { getConfig } from './lib/configNegocio';
@@ -158,7 +159,11 @@ function App() {
   return (
     <ConfigProvider>
       <AuthProvider>
-        <AppContent />
+        {/* Banner fijo de demo (≈22px). El espaciador evita que tape el contenido. */}
+        <DemoBanner />
+        <div style={{ paddingTop: 22 }}>
+          <AppContent />
+        </div>
         <ToastHost />
       </AuthProvider>
     </ConfigProvider>

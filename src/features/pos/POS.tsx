@@ -8,6 +8,7 @@ import { Topbar } from '../../components/Topbar';
 import { NumberInput } from '../../components/NumberInput';
 import { fmtMXN } from '../../lib/format';
 import { calcularTotales, subtotalLinea, round2 } from '../../lib/money';
+import { useConfig } from '../config/ConfigContext';
 import { getConfig } from '../../lib/configNegocio';
 import { generarFolioVenta, generarFolioCotizacion } from '../../lib/folios';
 import { fechaVencimientoDesdeHoy } from '../../lib/dates';
@@ -135,6 +136,9 @@ export const POS: React.FC<POSProps> = ({ vendedorId, vendedorNombre, onNav }) =
     efectivoRecibido: number | null;
     cambio: number | null;
   } | null>(null);
+
+  // Configuración de negocio (IVA configurable, moneda, etc.).
+  const { config } = useConfig();
 
   // References
   const scanInputRef = useRef<HTMLInputElement>(null);
@@ -377,11 +381,14 @@ export const POS: React.FC<POSProps> = ({ vendedorId, vendedorNombre, onNav }) =
     return Number(p.precio_publico);
   };
 
+  // IVA configurable: cada producto usa su propia tasa; si es 0 (caso AGROMAR y casi
+  // todo el catálogo de la demo), cae al IVA por defecto del negocio (configuracion.iva_default).
+  const tasaIvaDefault = Number(config.ivaDefault) || 0;
   const { subtotal, iva, total } = calcularTotales(
     cartItems.map(c => ({
       precioUnitario: getProductPrice(c),
       cantidad: c.qty,
-      tasaIva: Number(c.tasa_iva || 0),
+      tasaIva: Number(c.tasa_iva) || tasaIvaDefault,
     }))
   );
 
@@ -891,6 +898,18 @@ ${itemsText}
           {/* Totals panel */}
           <div style={{ borderTop: '1px solid var(--line)', padding: '14px 16px', background: 'var(--surface-2)' }}>
             <div style={{ display: 'grid', gap: 6, marginBottom: 12, fontSize: 13 }}>
+              {iva > 0 && (
+                <>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span>Subtotal</span>
+                    <span className="num">{fmtMXN(subtotal)}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span>IVA ({(tasaIvaDefault * 100).toFixed(0)}%)</span>
+                    <span className="num">{fmtMXN(iva)}</span>
+                  </div>
+                </>
+              )}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 4, paddingTop: 4 }}>
                 <span style={{ fontWeight: 700, fontSize: 16 }}>Total a Pagar</span>
                 <span className="num" style={{ fontWeight: 800, fontSize: 24, letterSpacing: '-0.02em' }}>{fmtMXN(total)}</span>

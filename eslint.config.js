@@ -31,4 +31,15 @@ export default defineConfig([
       'react-hooks/immutability': 'warn',
     },
   },
+  {
+    // Capa demo (src/lib/demo): shim que imita la API de @supabase/supabase-js.
+    // El cliente real es sin tipar (`any`) y varios métodos llevan parámetros
+    // posicionales que no usamos (firmas de la API). Relajamos ESAS dos reglas
+    // solo aquí; el resto de la app mantiene la configuración estricta.
+    files: ['src/lib/demo/**/*.ts'],
+    rules: {
+      '@typescript-eslint/no-explicit-any': 'off',
+      '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
+    },
+  },
 ])

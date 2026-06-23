@@ -16,7 +16,7 @@ async function init(): Promise<PGlite> {
   const db = new PGlite(DATA_DIR);
   await db.waitReady;
   // ¿ya sembrado y a la versión vigente?
-  let needsSeed = true;
+  let needsSeed: boolean;
   try {
     const r = await db.query<{ v: string }>(
       `select value as v from _demo_meta where key='seed_version' limit 1`);
