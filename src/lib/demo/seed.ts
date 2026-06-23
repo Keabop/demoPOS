@@ -17,7 +17,7 @@
 //    (el trigger ya baja saldo, salda la venta si procede e inserta el movimiento de caja).
 //  - iva=0 y total=subtotal en el historial (AGROMAR opera sin IVA; el IVA se demuestra en
 //    ventas NUEVAS desde el POS, con configuracion.iva_default=0.16).
-export const SEED_VERSION = '1.0.0';
+export const SEED_VERSION = '1.0.1';
 
 export const DEMO_SEED_SQL = /* sql */ `
 -- ===== Sesión: el vendedor activo durante la siembra es el técnico/mostrador (0002) =====
@@ -35,7 +35,7 @@ INSERT INTO perfiles(id,email,nombre,rol,activo) VALUES
 INSERT INTO configuracion(id,razon_social,descripcion,responsable,rfc,direccion,cp,ciudad,telefono,tel_pagare,email,logo_url,moneda_simbolo,moneda_iso,locale,iva_default)
 VALUES (1,'Agroservicios El Surco','Insumos agrícolas y crédito al productor','Karen Méndez','ASU240101AAA',
         'Carr. a Pénjamo Km 4','38400','Irapuato, Gto.','462 270 1280','462 270 1280','contacto@elsurco.mx',
-        '/logo-demo.png','$','MXN','es-MX',0.16);
+        '/logo-demo.svg','$','MXN','es-MX',0.16);
 
 -- ===== Proveedores =====
 INSERT INTO proveedores(id,nombre,contacto,telefono,email,direccion,rfc,activo) VALUES

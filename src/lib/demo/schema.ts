@@ -184,7 +184,7 @@ CREATE TABLE public.configuracion (
   telefono        varchar       NOT NULL DEFAULT '',
   tel_pagare      varchar       NOT NULL DEFAULT '',
   email           varchar       NOT NULL DEFAULT '',
-  logo_url        text          DEFAULT '/logo-agromar.png',
+  logo_url        text          DEFAULT '/logo-demo.svg',
   moneda_simbolo  varchar       NOT NULL DEFAULT '$',
   moneda_iso      varchar       NOT NULL DEFAULT 'MXN',
   locale          varchar       NOT NULL DEFAULT 'es-MX',

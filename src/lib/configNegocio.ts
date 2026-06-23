@@ -32,7 +32,7 @@ export const CONFIG_DEFAULT: ConfigNegocio = {
   telefono: DATOS_NEGOCIO.telefono,
   telPagare: DATOS_NEGOCIO.telPagare,
   email: DATOS_NEGOCIO.email,
-  logoUrl: '/logo-demo.png',
+  logoUrl: '/logo-demo.svg',
   monedaSimbolo: '$',
   monedaIso: 'MXN',
   locale: 'es-MX',
