@@ -1,0 +1,48 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Local and sensitive files
+Passw_SUPABASE_AGROMAR.txt
+Consideraciones.txt
+*.pdf
+.env
+.env.*
+!.env.example
+
+# Configuración/artefactos de herramientas locales (no se publican)
+CLAUDE.md
+docs/superpowers/
+
+# design-sync — todo local, no se versiona (claude.ai/design)
+.ds-sync/
+ds-bundle/
+.design-sync/
+
+# Pruebas E2E locales (Playwright) — no se versionan
+.e2e/
+
+# Fotos/documentos de referencia local (migración Velneo, etc.) — binarios, no al repo
+FOTOS_DOCUMENTOS/
+
