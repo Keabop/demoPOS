@@ -1,7 +1,7 @@
 // src/lib/demo/schema.ts
 // DDL del esquema REAL de AGROMAR adaptado para PGlite (Postgres-WASM en el navegador).
-// Derivado verbatim de supabase/migrations/_SNAPSHOT_DB_2026-06-22.sql con las transformaciones
-// documentadas en el plan:
+// Derivado verbatim del esquema real de AGROMAR (snapshot de la BD, 2026-06-22) con
+// las transformaciones:
 //   - se antepone el schema `auth` + un stub `auth.uid()` que lee el GUC de sesión `demo.uid`.
 //   - `uuid_generate_v4()` -> `gen_random_uuid()` (PGlite trae gen_random_uuid/md5 en el core).
 //   - se omiten: extensiones, FK a auth.users (fk_perfiles_users), RLS+policies, grants, cron,
