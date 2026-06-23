@@ -1,15 +1,5 @@
-import { createClient } from '@supabase/supabase-js';
-
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-
-if (!supabaseUrl || !supabaseAnonKey) {
-  console.warn(
-    'Faltan las variables de entorno de Supabase. Asegúrate de configurar VITE_SUPABASE_URL y VITE_SUPABASE_ANON_KEY.'
-  );
-}
-
-export const supabase = createClient(
-  supabaseUrl || 'https://placeholder.supabase.co',
-  supabaseAnonKey || 'placeholder'
-);
+// src/lib/supabase.ts
+// DEMO portable: la app NO se conecta a Supabase. Este módulo re-exporta el shim
+// local (PGlite + mocks de auth/storage/realtime) que implementa el subconjunto de
+// la API de @supabase/supabase-js que usa AGROMAR. Sin red, sin variables de entorno.
+export { supabase } from './demo/client';
