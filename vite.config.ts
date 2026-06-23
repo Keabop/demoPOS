@@ -8,6 +8,10 @@ export default defineConfig({
   server: {
     allowedHosts: true,
   },
+  optimizeDeps: {
+    exclude: ['@electric-sql/pglite'],
+  },
+  worker: { format: 'es' },
   test: {
     globals: true,
     environment: 'jsdom',
