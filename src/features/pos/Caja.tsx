@@ -234,7 +234,7 @@ export const Caja: React.FC = () => {
                             )}
                           </td>
                           <td style={{ padding: '12px', textAlign: 'center' }}>
-                            <span className={`badge ${shift.estado === 'activo' ? 'green' : shift.estado === 'cerrado' ? 'gray' : 'amber'}`} style={{ fontSize: 10 }}>
+                            <span className={`badge ${shift.estado === 'activo' ? 'ok' : shift.estado === 'cerrado' ? 'gray' : 'amber'}`} style={{ fontSize: 10 }}>
                               {shift.estado === 'activo' ? 'Activo' : shift.estado === 'cerrado' ? 'Cerrado' : 'Abierto s/c'}
                             </span>
                           </td>
@@ -774,8 +774,8 @@ export const Caja: React.FC = () => {
           font-weight: 700;
           text-align: center;
         }
-        .caja-corte-diff-badge.cuadrado { background: var(--green-soft); color: var(--green-2); }
-        .caja-corte-diff-badge.sobrante { background: var(--green-soft); color: var(--green-2); }
+        .caja-corte-diff-badge.cuadrado { background: var(--ok-soft); color: var(--ok-2); }
+        .caja-corte-diff-badge.sobrante { background: var(--ok-soft); color: var(--ok-2); }
         .caja-corte-diff-badge.faltante { background: var(--red-soft); color: var(--red); }
 
         @media (max-width: 1024px) {
@@ -1662,7 +1662,7 @@ export const Caja: React.FC = () => {
                   <span>Efectivo Contado:</span>
                   <span className="num font-bold">{fmtMXN(Number(corteCounted))}</span>
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', borderTop: '1px dashed var(--line)', paddingTop: 6, color: difference === 0 ? 'var(--green-2)' : difference > 0 ? 'var(--green-2)' : 'var(--red)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', borderTop: '1px dashed var(--line)', paddingTop: 6, color: difference === 0 ? 'var(--ok-2)' : difference > 0 ? 'var(--ok-2)' : 'var(--red)' }}>
                   <span>Diferencia:</span>
                   <span>{difference === 0 ? 'Cuadrado' : difference > 0 ? `+${fmtMXN(difference)}` : `-${fmtMXN(Math.abs(difference))}`}</span>
                 </div>

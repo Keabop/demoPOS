@@ -20,8 +20,8 @@ const SELECT = `*, ventas_detalles ( *, productos ( * ) )`;
 
 // Tonos verdes de la marca (dona y barras de categoría)
 const GREEN_SHADES = [
-  'oklch(0.50 0.13 145)', 'oklch(0.58 0.13 145)', 'oklch(0.64 0.12 145)',
-  'oklch(0.70 0.10 145)', 'oklch(0.77 0.08 145)', 'oklch(0.84 0.06 145)',
+  'oklch(0.55 0.14 76)', 'oklch(0.62 0.14 77)', 'oklch(0.68 0.13 78)',
+  'oklch(0.74 0.11 80)', 'oklch(0.80 0.09 82)', 'oklch(0.86 0.07 84)',
 ];
 const AVATARS = [
   { bg: 'var(--green-soft)', color: 'var(--green-2)' },
@@ -145,7 +145,7 @@ const KpiCard: React.FC<KpiProps> = ({ label, value, icon, iconBg, iconColor, sp
           </svg>
         )}
         {v && (
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, fontWeight: 700, color: v.up ? 'var(--green-2)' : 'var(--red)' }}>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, fontWeight: 700, color: v.up ? 'var(--ok-2)' : 'var(--red)' }}>
             <Icon name={v.up ? 'arrow-up' : 'arrow-down'} size={13} />
             <span className="num">{v.up ? '+' : '-'}{v.pct.toFixed(1)}%</span>
             <span style={{ color: 'var(--muted)', fontWeight: 500 }}>vs anterior</span>

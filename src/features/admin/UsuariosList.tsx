@@ -17,7 +17,7 @@ const ROL_LABEL: Record<Perfil['rol'], string> = {
 };
 
 const ROL_BADGE: Record<Perfil['rol'], { bg: string; fg: string }> = {
-  admin: { bg: 'var(--green-soft, oklch(0.95 0.04 145))', fg: 'var(--green)' },
+  admin: { bg: 'var(--green-soft)', fg: 'var(--green)' },
   vendedor: { bg: 'var(--surface-2)', fg: 'var(--ink-2)' },
   visitante: { bg: 'var(--surface-2)', fg: 'var(--muted)' },
 };
@@ -208,7 +208,7 @@ export const UsuariosList: React.FC<UsuariosListProps> = ({ refreshKey }) => {
                     height: 38,
                     borderRadius: '50%',
                     flex: 'none',
-                    background: 'var(--green-soft, oklch(0.95 0.04 145))',
+                    background: 'var(--green-soft)',
                     color: 'var(--green)',
                     display: 'flex',
                     alignItems: 'center',

@@ -649,7 +649,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNav }) => {
             <div style={{ display: 'grid', gap: 10 }}>
               {lowStockList.length === 0 ? (
                 <div style={{ padding: '40px 20px', textAlign: 'center', color: 'var(--muted)', border: '2px dashed var(--line)', borderRadius: 10, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
-                  <Icon name="check" size={24} color="var(--green)" />
+                  <Icon name="check" size={24} color="var(--ok)" />
                   <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)' }}>Todo en orden</div>
                   <div style={{ fontSize: 11 }}>No hay productos con stock bajo.</div>
                 </div>
@@ -710,7 +710,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNav }) => {
                       <td style={{ padding: '12px 0', borderBottom: '1px solid var(--line-2)' }} className="num">{r.folio}</td>
                       <td style={{ padding: '12px 0', borderBottom: '1px solid var(--line-2)' }}>{r.cliente}</td>
                       <td style={{ padding: '12px 0', borderBottom: '1px solid var(--line-2)' }}>
-                        <span className={`badge ${r.tipo === 'Crédito' ? 'amber' : 'green'}`}><span className="dot"></span>{r.tipo}</span>
+                        <span className={`badge ${r.tipo === 'Crédito' ? 'amber' : 'ok'}`}><span className="dot"></span>{r.tipo}</span>
                       </td>
                       <td style={{ padding: '12px 0', textAlign: 'right', color: 'var(--muted)', borderBottom: '1px solid var(--line-2)' }} className="num">{r.hora}</td>
                       <td style={{ padding: '12px 0', textAlign: 'right', fontWeight: 600, borderBottom: '1px solid var(--line-2)' }} className="num">{fmtMXN(r.total)}</td>
@@ -721,10 +721,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNav }) => {
             )}
           </div>
 
-          <div className="card" style={{ padding: 22, background: overdueCredits.length > 0 ? 'linear-gradient(160deg, oklch(0.97 0.04 25) 0%, var(--surface) 60%)' : 'linear-gradient(160deg, var(--green-soft) 0%, var(--surface) 60%)' }}>
+          <div className="card" style={{ padding: 22, background: overdueCredits.length > 0 ? 'linear-gradient(160deg, oklch(0.97 0.04 25) 0%, var(--surface) 60%)' : 'linear-gradient(160deg, var(--ok-soft) 0%, var(--surface) 60%)' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
-              <Icon name={overdueCredits.length > 0 ? 'alert' : 'check'} size={18} color={overdueCredits.length > 0 ? 'var(--red)' : 'var(--green)'} />
-              <div className="h3" style={{ color: overdueCredits.length > 0 ? 'var(--red)' : 'var(--green-2)' }}>
+              <Icon name={overdueCredits.length > 0 ? 'alert' : 'check'} size={18} color={overdueCredits.length > 0 ? 'var(--red)' : 'var(--ok)'} />
+              <div className="h3" style={{ color: overdueCredits.length > 0 ? 'var(--red)' : 'var(--ok-2)' }}>
                 {overdueCredits.length > 0 ? 'Atención requerida' : 'Créditos al corriente'}
               </div>
             </div>

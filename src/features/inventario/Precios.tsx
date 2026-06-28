@@ -229,7 +229,7 @@ export const Precios: React.FC = () => {
                         {/* Disponibilidad */}
                         <td style={{ padding: '12px 12px' }}>
                           <span
-                            className={`badge ${stockVal > 0 ? 'green' : 'red'}`}
+                            className={`badge ${stockVal > 0 ? 'ok' : 'red'}`}
                             style={{ height: 20, fontSize: 10, padding: '0 8px', display: 'inline-flex', alignItems: 'center', fontWeight: 600 }}
                           >
                             {stockVal > 0 ? 'Disponible' : 'Agotado'}

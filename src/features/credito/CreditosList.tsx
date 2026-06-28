@@ -340,8 +340,8 @@ export const CreditosList: React.FC = () => {
           color: var(--red);
         }
         .creditos-status-badge.al_corriente {
-          background: var(--green-soft);
-          color: var(--green-2);
+          background: var(--ok-soft);
+          color: var(--ok-2);
         }
         .creditos-status-badge.pagada {
           background: var(--line-2);
@@ -641,7 +641,7 @@ export const CreditosList: React.FC = () => {
                                   width: 6,
                                   height: 6,
                                   borderRadius: '50%',
-                                  background: c.status === 'VENCIDA' ? 'var(--red)' : c.status === 'AL CORRIENTE' ? 'var(--green)' : 'var(--muted-2)',
+                                  background: c.status === 'VENCIDA' ? 'var(--red)' : c.status === 'AL CORRIENTE' ? 'var(--ok)' : 'var(--muted-2)',
                                   display: 'inline-block',
                                   marginRight: 6
                                 }}

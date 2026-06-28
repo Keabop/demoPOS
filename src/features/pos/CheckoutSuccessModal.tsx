@@ -130,14 +130,14 @@ export const CheckoutSuccessModal: React.FC<CheckoutSuccessModalProps> = ({
     width: '64px',
     height: '64px',
     borderRadius: '50%',
-    backgroundColor: 'var(--green-soft)',
+    backgroundColor: 'var(--ok-soft)',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    color: 'var(--green)',
+    color: 'var(--ok)',
     margin: '0 auto 8px auto',
-    border: '1px solid var(--green-line)',
-    boxShadow: '0 8px 16px rgba(oklch(0.58 0.13 145 / 0.08))',
+    border: '1px solid var(--ok-line)',
+    boxShadow: '0 8px 16px oklch(0.56 0.13 150 / 0.16)',
   };
 
   const headerStyle: React.CSSProperties = {
@@ -183,7 +183,7 @@ export const CheckoutSuccessModal: React.FC<CheckoutSuccessModalProps> = ({
   const getWhatsAppButtonColor = () => {
     switch (sendStatus) {
       case 'success':
-        return 'var(--green)';
+        return 'var(--ok)';
       case 'error':
         return 'var(--red)';
       default:
@@ -295,7 +295,7 @@ export const CheckoutSuccessModal: React.FC<CheckoutSuccessModalProps> = ({
           </div>
           <div style={summaryRowStyle}>
             <span style={{ color: 'var(--muted)', fontWeight: 500 }}>Total Pagado</span>
-            <span className="num" style={{ fontSize: '18px', fontWeight: 800, color: 'var(--green-2)' }}>
+            <span className="num" style={{ fontSize: '18px', fontWeight: 800, color: 'var(--ok-2)' }}>
               {fmtMXN(total)}
             </span>
           </div>

@@ -23,8 +23,8 @@ interface VentaConDetalles extends Venta {
 
 // ── Lenguaje visual compartido con ReporteVentas ─────────────────────────────
 const GREEN_SHADES = [
-  'oklch(0.50 0.13 145)', 'oklch(0.58 0.13 145)', 'oklch(0.64 0.12 145)',
-  'oklch(0.70 0.10 145)', 'oklch(0.77 0.08 145)', 'oklch(0.84 0.06 145)',
+  'oklch(0.55 0.14 76)', 'oklch(0.62 0.14 77)', 'oklch(0.68 0.13 78)',
+  'oklch(0.74 0.11 80)', 'oklch(0.80 0.09 82)', 'oklch(0.86 0.07 84)',
 ];
 
 const fmtNum = (n: number) => Number(n).toLocaleString('es-MX', { maximumFractionDigits: 0 });
@@ -226,7 +226,7 @@ export const ReporteInventario: React.FC<ReportProps> = ({ startDate, endDate })
     return bins.map((b, i) => ({
       ...b,
       h: (b.value / max) * 150,
-      color: i <= 1 ? 'var(--red)' : i <= 3 ? 'var(--amber)' : 'var(--green)',
+      color: i <= 1 ? 'var(--red)' : i <= 3 ? 'var(--amber)' : 'var(--ok)',
     }));
   }, [lotes]);
 
@@ -257,7 +257,7 @@ export const ReporteInventario: React.FC<ReportProps> = ({ startDate, endDate })
     return arr.map((x, i) => ({
       ...x,
       pct: max > 0 ? (x.ratio / max) * 100 : 0,
-      color: i < 5 ? 'var(--green)' : 'oklch(0.80 0.07 145)',
+      color: i < 5 ? 'var(--green)' : 'oklch(0.80 0.09 82)',
     }));
   }, [productos, sales]);
 

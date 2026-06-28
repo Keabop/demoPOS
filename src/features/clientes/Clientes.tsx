@@ -24,19 +24,19 @@ interface CarteraInfo {
 type Filtro = 'todos' | 'al-corriente' | 'por-vencer' | 'vencida';
 
 const ESTATUS_BADGE: Record<EstatusCliente, { clase: string; label: string }> = {
-  'al-corriente': { clase: 'green', label: 'Al corriente' },
+  'al-corriente': { clase: 'ok', label: 'Al corriente' },
   'por-vencer': { clase: 'amber', label: 'Próxima a vencer' },
   vencida: { clase: 'red', label: 'Deuda vencida' },
 };
 
 const ESTATUS_COLOR: Record<EstatusCliente, string> = {
-  'al-corriente': 'var(--green)',
+  'al-corriente': 'var(--ok)',
   'por-vencer': 'var(--amber)',
   vencida: 'var(--red)',
 };
 
 const AVATAR_BG: Record<EstatusCliente, string> = {
-  'al-corriente': 'oklch(0.4 0.05 145)',
+  'al-corriente': 'oklch(0.42 0.10 150)',
   'por-vencer': 'oklch(0.6 0.13 75)',
   vencida: 'oklch(0.55 0.14 25)',
 };
@@ -199,7 +199,7 @@ export const Clientes: React.FC<ClientesProps> = () => {
 
   const RESUMEN: { label: string; val: number | string; sub: string; color: string }[] = [
     { label: 'Clientes totales', val: kpis.total, sub: 'Registrados en el sistema', color: 'gray' },
-    { label: 'Al corriente', val: kpis.corriente, sub: 'Sin adeudos vencidos', color: 'green' },
+    { label: 'Al corriente', val: kpis.corriente, sub: 'Sin adeudos vencidos', color: 'ok' },
     { label: 'Por vencer (7d)', val: kpis.porVencer, sub: 'Requieren seguimiento', color: 'amber' },
     { label: 'Deuda vencida', val: kpis.vencida, sub: `${fmtMXN(kpis.montoVencido)} por cobrar`, color: 'red' },
   ];

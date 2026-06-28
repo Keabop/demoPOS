@@ -110,7 +110,7 @@ export const HistorialClientes: React.FC = () => {
                       <div style={{ fontWeight: 700, fontSize: 15, color: 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.nombre}</div>
                       {c.rancho && <div style={{ fontSize: 12, color: 'var(--muted)' }}>{c.rancho}</div>}
                     </div>
-                    <span className={`badge ${saldo > 0 ? 'amber' : 'green'}`} style={{ flex: 'none' }}>
+                    <span className={`badge ${saldo > 0 ? 'amber' : 'ok'}`} style={{ flex: 'none' }}>
                       {saldo > 0 ? 'Con saldo' : 'Al día'}
                     </span>
                   </div>
@@ -118,7 +118,7 @@ export const HistorialClientes: React.FC = () => {
                     <span style={{ fontSize: 12, color: 'var(--muted)', display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
                       {c.telefono ? (<><Icon name="phone" size={12} /> {c.telefono}</>) : 'Sin teléfono'}
                     </span>
-                    <span className="num" style={{ fontWeight: 800, fontSize: 15, color: saldo > 0 ? 'oklch(0.52 0.13 75)' : 'var(--green-2)' }}>{fmtMXN(saldo)}</span>
+                    <span className="num" style={{ fontWeight: 800, fontSize: 15, color: saldo > 0 ? 'oklch(0.52 0.13 75)' : 'var(--ok-2)' }}>{fmtMXN(saldo)}</span>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--green-2)', fontSize: 13, fontWeight: 600, borderTop: '1px solid var(--line-2)', paddingTop: 10 }}>
                     <Icon name="file" size={14} /> Ver estado de cuenta

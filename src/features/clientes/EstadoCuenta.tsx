@@ -465,8 +465,8 @@ export const EstadoCuenta: React.FC<EstadoCuentaProps> = ({ cliente, onBack, onO
           color: var(--red);
         }
         .est-cta-status-badge.corriente {
-          background: var(--green-soft);
-          color: var(--green-2);
+          background: var(--ok-soft);
+          color: var(--ok-2);
         }
         .est-cta-status-badge.pagada {
           background: var(--line-2);
@@ -577,13 +577,13 @@ export const EstadoCuenta: React.FC<EstadoCuentaProps> = ({ cliente, onBack, onO
               padding: 24,
               background: totalVencido > 0
                 ? 'linear-gradient(135deg, var(--red-soft) 0%, var(--surface) 70%)'
-                : 'linear-gradient(135deg, var(--green-soft) 0%, var(--surface) 70%)',
-              borderColor: totalVencido > 0 ? 'oklch(0.85 0.08 25)' : 'var(--green-line)',
+                : 'linear-gradient(135deg, var(--ok-soft) 0%, var(--surface) 70%)',
+              borderColor: totalVencido > 0 ? 'oklch(0.85 0.08 25)' : 'var(--ok-line)',
             }}
           >
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 20, flexWrap: 'wrap' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-                <div style={{ width: 56, height: 56, borderRadius: 14, background: totalVencido > 0 ? 'var(--red)' : 'var(--green)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.2)' }}>
+                <div style={{ width: 56, height: 56, borderRadius: 14, background: totalVencido > 0 ? 'var(--red)' : 'var(--ok)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.2)' }}>
                   <Icon name={totalVencido > 0 ? 'alert' : 'credit'} size={26} />
                 </div>
                 <div>
@@ -602,7 +602,7 @@ export const EstadoCuenta: React.FC<EstadoCuentaProps> = ({ cliente, onBack, onO
             </div>
             <div style={{ marginTop: 18 }}>
               <div style={{ height: 8, background: 'var(--surface)', borderRadius: 999, border: '1px solid var(--line)', overflow: 'hidden' }}>
-                <div style={{ height: '100%', width: `${pctLiquidado}%`, background: totalVencido > 0 ? 'var(--red)' : 'var(--green)', borderRadius: 999 }} />
+                <div style={{ height: '100%', width: `${pctLiquidado}%`, background: totalVencido > 0 ? 'var(--red)' : 'var(--ok)', borderRadius: 999 }} />
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6, fontSize: 11, color: 'var(--muted)' }}>
                 <span>{pctLiquidado}% liquidado</span>
@@ -663,9 +663,9 @@ export const EstadoCuenta: React.FC<EstadoCuentaProps> = ({ cliente, onBack, onO
                     gap: 6,
                     cursor: savingDefault ? 'not-allowed' : 'pointer',
                     transition: 'all 0.2s',
-                    background: saveSuccess ? 'var(--green-soft)' : 'var(--surface)',
-                    border: `1.5px solid ${saveSuccess ? 'var(--green)' : 'var(--line)'}`,
-                    color: saveSuccess ? 'var(--green-2)' : 'var(--ink)'
+                    background: saveSuccess ? 'var(--ok-soft)' : 'var(--surface)',
+                    border: `1.5px solid ${saveSuccess ? 'var(--ok)' : 'var(--line)'}`,
+                    color: saveSuccess ? 'var(--ok-2)' : 'var(--ink)'
                   }}
                   disabled={savingDefault}
                   title="Guardar este plazo como el predeterminado para este cliente"

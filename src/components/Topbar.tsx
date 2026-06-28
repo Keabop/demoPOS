@@ -114,11 +114,11 @@ export const Topbar: React.FC<TopbarProps> = ({ title, subtitle, children }) => 
               alignItems: 'center', 
               gap: 8, 
               padding: '6px 12px', 
-              background: cajaStatus.esPrevio ? 'var(--amber-soft)' : 'var(--green-soft)', 
+              background: cajaStatus.esPrevio ? 'var(--amber-soft)' : 'var(--ok-soft)',
               borderRadius: 999, 
               fontSize: 12, 
               fontWeight: 600, 
-              color: cajaStatus.esPrevio ? 'oklch(0.52 0.13 75)' : 'var(--green-2)'
+              color: cajaStatus.esPrevio ? 'oklch(0.52 0.13 75)' : 'var(--ok-2)'
             }}
             title={cajaStatus.esPrevio ? 'Este turno es de un día anterior o lleva abierto más de 16 horas. Se recomienda realizar corte de caja.' : undefined}
           >
@@ -126,7 +126,7 @@ export const Topbar: React.FC<TopbarProps> = ({ title, subtitle, children }) => 
               width: 6, 
               height: 6, 
               borderRadius: 999, 
-              background: cajaStatus.esPrevio ? 'var(--amber)' : 'var(--green)'
+              background: cajaStatus.esPrevio ? 'var(--amber)' : 'var(--ok)'
             }}></span>
             Caja abierta · {cajaStatus.label} {cajaStatus.esPrevio && <span style={{fontSize: 10, opacity: 0.85, fontWeight: 700}}>· Turno previo</span>}
           </div>

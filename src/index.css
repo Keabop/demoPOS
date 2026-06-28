@@ -1,3 +1,5 @@
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+
 :root {
   --bg: #f6f3ec;
   --surface: #ffffff;
@@ -9,19 +11,29 @@
   --line: #e7e3d8;
   --line-2: #efece3;
 
-  --sidebar: #0f1714;
-  --sidebar-2: #16201c;
-  --sidebar-line: #1f2b26;
-  --sidebar-ink: #d9e2dc;
-  --sidebar-muted: #7d8a83;
+  --sidebar: #17130d;
+  --sidebar-2: #221c13;
+  --sidebar-line: #2c2418;
+  --sidebar-ink: #e7e1d4;
+  --sidebar-muted: #8c8474;
 
-  --green: oklch(0.58 0.13 145);
-  --green-2: oklch(0.52 0.13 145);
-  --green-soft: oklch(0.95 0.04 145);
-  --green-line: oklch(0.86 0.06 145);
+  /* Marca / acento — ÁMBAR MIEL (re-skin "Mostrador cálido").
+     Se conserva el nombre --green* para no romper las ~50 referencias; el VALOR
+     es ámbar, no verde. En el rediseño completo (Claude Design) se renombra a --brand*. */
+  --green: oklch(0.69 0.14 76);
+  --green-2: oklch(0.52 0.13 66);
+  --green-soft: oklch(0.95 0.05 84);
+  --green-line: oklch(0.86 0.08 82);
 
-  --amber: oklch(0.72 0.14 75);
-  --amber-soft: oklch(0.96 0.05 80);
+  /* Advertencia / por vencer — NARANJA (diferenciado del ámbar de marca) */
+  --amber: oklch(0.66 0.17 52);
+  --amber-soft: oklch(0.95 0.075 56);
+
+  /* Éxito / al corriente — VERDE (estado positivo del semáforo de cartera/stock/crédito) */
+  --ok: oklch(0.56 0.13 150);
+  --ok-2: oklch(0.47 0.13 150);
+  --ok-soft: oklch(0.95 0.045 150);
+  --ok-line: oklch(0.86 0.06 150);
   --red: oklch(0.58 0.16 25);
   --red-soft: oklch(0.96 0.04 25);
   --blue: oklch(0.6 0.1 240);
@@ -76,8 +88,9 @@ input:focus, button:focus, select:focus { outline: none; }
   font-size: 12px; font-weight: 600; letter-spacing: -0.005em;
 }
 .badge.green { background: var(--green-soft); color: var(--green-2); }
+.badge.ok { background: var(--ok-soft); color: var(--ok-2); }
 .badge.red { background: var(--red-soft); color: var(--red); }
-.badge.amber { background: var(--amber-soft); color: oklch(0.5 0.12 70); }
+.badge.amber { background: var(--amber-soft); color: oklch(0.47 0.16 50); }
 .badge.blue { background: var(--blue-soft); color: var(--blue); }
 .badge.gray { background: var(--line-2); color: var(--ink-2); }
 .dot { width: 6px; height: 6px; border-radius: 999px; background: currentColor; flex: none; }
@@ -90,8 +103,8 @@ input:focus, button:focus, select:focus { outline: none; }
   white-space: nowrap;
 }
 .btn:hover { transform: translateY(-1px); }
-.btn-primary { background: var(--green); color: #fff; box-shadow: 0 1px 0 rgba(0,0,0,0.05), inset 0 1px 0 rgba(255,255,255,0.15); }
-.btn-primary:hover { background: var(--green-2); }
+.btn-primary { background: var(--green); color: var(--ink); box-shadow: 0 1px 0 rgba(0,0,0,0.06), inset 0 1px 0 rgba(255,255,255,0.35); }
+.btn-primary:hover { background: oklch(0.74 0.14 80); }
 .btn-secondary { background: var(--surface); border-color: var(--line); color: var(--ink); }
 .btn-secondary:hover { background: var(--surface-2); border-color: #d9d3c4; }
 .btn-ghost { background: transparent; color: var(--ink-2); }
@@ -108,7 +121,7 @@ input:focus, button:focus, select:focus { outline: none; }
   font-size: 14px; transition: border-color 0.12s;
   width: 100%;
 }
-.input:focus { border-color: var(--green); box-shadow: 0 0 0 3px oklch(0.58 0.13 145 / 0.12); }
+.input:focus { border-color: var(--green); box-shadow: 0 0 0 3px oklch(0.69 0.14 76 / 0.18); }
 .input-lg { height: 48px; font-size: 15px; }
 .label { display: block; font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 6px; }
 
@@ -147,7 +160,7 @@ input:focus, button:focus, select:focus { outline: none; }
 .sidebar-item.active { background: var(--sidebar-2); color: #fff; }
 .sidebar-item.active .sidebar-icon { color: var(--green); }
 .sidebar-icon { width: 18px; height: 18px; flex: none; color: var(--sidebar-muted); }
-.sidebar-item.active .sidebar-icon { color: oklch(0.7 0.13 145); }
+.sidebar-item.active .sidebar-icon { color: oklch(0.78 0.14 80); }
 .sidebar-counter { margin-left: auto; font-size: 11px; font-weight: 600; padding: 2px 7px; background: rgba(255,255,255,0.08); border-radius: 999px; color: var(--sidebar-ink); }
 .sidebar-counter.warn { background: oklch(0.55 0.16 25 / 0.18); color: oklch(0.78 0.14 25); }
 .sidebar-foot {
@@ -156,7 +169,7 @@ input:focus, button:focus, select:focus { outline: none; }
   padding: 14px 16px; display: flex; align-items: center; gap: 10px;
   padding-bottom: calc(14px + env(safe-area-inset-bottom));
 }
-.avatar { width: 36px; height: 36px; border-radius: 999px; background: oklch(0.4 0.05 145); display: flex; align-items: center; justify-content: center; font-weight: 700; color: #d9e2dc; font-size: 13px; }
+.avatar { width: 36px; height: 36px; border-radius: 999px; background: oklch(0.42 0.04 70); display: flex; align-items: center; justify-content: center; font-weight: 700; color: #efe9dc; font-size: 13px; }
 .sidebar-user-name { font-size: 13px; font-weight: 600; color: #fff; }
 .sidebar-user-role { font-size: 11px; color: var(--sidebar-muted); }
 
@@ -177,8 +190,8 @@ input:focus, button:focus, select:focus { outline: none; }
 /* Login page (no sidebar) */
 .login-shell {
   min-height: 100vh; background:
-    radial-gradient(ellipse 60% 50% at 80% 10%, oklch(0.58 0.13 145 / 0.08), transparent 60%),
-    radial-gradient(ellipse 50% 40% at 10% 90%, oklch(0.7 0.08 80 / 0.06), transparent 60%),
+    radial-gradient(ellipse 60% 50% at 80% 10%, oklch(0.72 0.14 78 / 0.12), transparent 60%),
+    radial-gradient(ellipse 50% 40% at 10% 90%, oklch(0.80 0.10 60 / 0.07), transparent 60%),
     var(--bg);
   display: flex; align-items: center; justify-content: center; padding: 40px;
 }
@@ -377,7 +390,7 @@ input:focus, button:focus, select:focus { outline: none; }
   align-items: center;
   justify-content: center;
   color: var(--green);
-  box-shadow: 0 8px 16px rgba(oklch(0.58 0.13 145 / 0.1), inset 0 2px 4px rgba(255, 255, 255, 0.6));
+  box-shadow: 0 8px 16px rgba(oklch(0.69 0.14 76 / 0.1), inset 0 2px 4px rgba(255, 255, 255, 0.6));
   animation: pulse-icon 2s infinite ease-in-out;
 }
 
@@ -399,11 +412,11 @@ input:focus, button:focus, select:focus { outline: none; }
 @keyframes pulse-icon {
   0%, 100% {
     transform: scale(1);
-    box-shadow: 0 8px 16px rgba(oklch(0.58 0.13 145 / 0.15));
+    box-shadow: 0 8px 16px rgba(oklch(0.69 0.14 76 / 0.15));
   }
   50% {
     transform: scale(1.08);
-    box-shadow: 0 12px 24px rgba(oklch(0.58 0.13 145 / 0.25)), 0 0 0 4px var(--green-soft);
+    box-shadow: 0 12px 24px rgba(oklch(0.69 0.14 76 / 0.25)), 0 0 0 4px var(--green-soft);
   }
 }
 

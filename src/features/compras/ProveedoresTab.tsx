@@ -100,7 +100,7 @@ export const ProveedoresTab: React.FC = () => {
           {filtrados.map((p) => (
             <div key={p.id} className="card" style={{ padding: 18, display: 'flex', flexDirection: 'column', gap: 12 }}>
               <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-                <div style={{ width: 46, height: 46, borderRadius: 12, flex: 'none', background: 'var(--green-soft, oklch(0.95 0.04 145))', color: 'var(--green)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 14 }}>
+                <div style={{ width: 46, height: 46, borderRadius: 12, flex: 'none', background: 'var(--green-soft)', color: 'var(--green)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 14 }}>
                   {iniciales(p.nombre)}
                 </div>
                 <div style={{ minWidth: 0, flex: 1 }}>

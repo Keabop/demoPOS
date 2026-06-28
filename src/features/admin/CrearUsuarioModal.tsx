@@ -249,7 +249,7 @@ export const CrearUsuarioModal: React.FC<CrearUsuarioModalProps> = ({
           transition: color 0.12s;
         }
         .pw-req.ok {
-          color: var(--green, oklch(0.5 0.15 150));
+          color: var(--ok-2);
         }
         .pw-req-dot {
           width: 14px;
@@ -275,10 +275,10 @@ export const CrearUsuarioModal: React.FC<CrearUsuarioModalProps> = ({
           align-items: center;
           gap: 10px;
           padding: 12px 16px;
-          background: var(--green-soft, oklch(0.95 0.05 150));
-          border: 1px solid oklch(0.8 0.12 150);
+          background: var(--ok-soft);
+          border: 1px solid var(--ok-line);
           border-radius: var(--radius-sm);
-          color: var(--green, oklch(0.5 0.15 150));
+          color: var(--ok-2);
           font-size: 13px;
         }
         .spinner {

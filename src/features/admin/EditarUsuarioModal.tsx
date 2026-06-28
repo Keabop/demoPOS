@@ -130,8 +130,8 @@ export const EditarUsuarioModal: React.FC<EditarUsuarioModalProps> = ({
         }
         .success-banner {
           display: flex; align-items: center; gap: 10px; padding: 12px 16px;
-          background: var(--green-soft, oklch(0.95 0.05 150)); border: 1px solid oklch(0.8 0.12 150);
-          border-radius: var(--radius-sm); color: var(--green, oklch(0.5 0.15 150)); font-size: 13px;
+          background: var(--ok-soft); border: 1px solid var(--ok-line);
+          border-radius: var(--radius-sm); color: var(--ok-2); font-size: 13px;
         }
         .field-hint { font-size: 12px; color: var(--muted); }
         .spinner { animation: spin 0.8s linear infinite; }

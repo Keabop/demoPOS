@@ -83,7 +83,7 @@ const KpiCard: React.FC<KpiProps> = ({ label, value, valueSuffix, icon, iconBg, 
           </svg>
         )}
         {v ? (
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, fontWeight: 700, color: good ? 'var(--green-2)' : 'var(--red)' }}>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, fontWeight: 700, color: good ? 'var(--ok-2)' : 'var(--red)' }}>
             <Icon name={v.up ? 'arrow-up' : 'arrow-down'} size={13} />
             <span className="num">{v.up ? '+' : '-'}{v.pct.toFixed(1)}%</span>
             <span style={{ color: 'var(--muted)', fontWeight: 500 }}>vs anterior</span>
@@ -111,7 +111,7 @@ const BarRow: React.FC<{ label: string; value: string; pct: number; color: strin
 const cardHead: React.CSSProperties = { display: 'flex', alignItems: 'center', justifyContent: 'space-between' };
 
 // Colores de los rangos de antigüedad (corriente / leve / medio / alto riesgo).
-const AGING_COLORS = ['var(--green)', 'var(--amber)', 'oklch(0.66 0.15 50)', 'var(--red)'];
+const AGING_COLORS = ['var(--ok)', 'var(--amber)', 'oklch(0.66 0.15 50)', 'var(--red)'];
 
 interface ProcessedSale extends VentaConRelaciones {
   saldo: number;
@@ -437,7 +437,7 @@ export const ReporteCobranza: React.FC<ReportProps> = ({ startDate, endDate }) =
       let badge: { cls: string; text: string };
       if (d.maxAtraso > 30) badge = { cls: 'red', text: 'Moroso' };
       else if (d.maxAtraso > 0) badge = { cls: 'amber', text: 'Atraso leve' };
-      else badge = { cls: 'green', text: 'Al corriente' };
+      else badge = { cls: 'ok', text: 'Al corriente' };
       return { ...d, avatar: AVATARS[i % AVATARS.length], initials: initialsOf(d.nombre), badge };
     });
   }, [processed]);
@@ -566,7 +566,7 @@ export const ReporteCobranza: React.FC<ReportProps> = ({ startDate, endDate }) =
                   label={d.nombre}
                   value={fmtMXN(d.saldo)}
                   pct={d.pct}
-                  color={d.hasOverdue ? 'var(--red)' : 'var(--green)'}
+                  color={d.hasOverdue ? 'var(--red)' : 'var(--ok)'}
                   valueColor={d.hasOverdue ? 'var(--red)' : 'var(--ink)'}
                 />
               ))}

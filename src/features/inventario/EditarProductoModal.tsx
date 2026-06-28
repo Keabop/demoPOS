@@ -114,7 +114,7 @@ export const EditarProductoModal: React.FC<Props> = ({ producto, onClose, onSave
               <NumberInput className="input num" value={costo} onChange={setCosto} />
             </div>
             {precioPublico > 0 && (
-              <div className="label" style={{ display: 'flex', justifyContent: 'space-between', color: m.utilidad >= 0 ? 'var(--green-2)' : 'var(--red)', marginBottom: 8 }}>
+              <div className="label" style={{ display: 'flex', justifyContent: 'space-between', color: m.utilidad >= 0 ? 'var(--ok-2)' : 'var(--red)', marginBottom: 8 }}>
                 <span>Margen</span>
                 <span className="num">{m.utilidad >= 0 ? '+' : ''}{fmtMXN(m.utilidad)} · {m.porcentaje}%</span>
               </div>

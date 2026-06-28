@@ -13,7 +13,7 @@ interface OrdenListItem extends OrdenCompra {
 const ESTADO_BADGE: Record<EstadoOrden, { bg: string; fg: string; label: string }> = {
   borrador: { bg: 'var(--surface-2)', fg: 'var(--ink-2)', label: 'Borrador' },
   enviada: { bg: 'var(--amber-soft)', fg: 'oklch(0.5 0.12 70)', label: 'Enviada' },
-  recibida: { bg: 'var(--green-soft, oklch(0.95 0.04 145))', fg: 'var(--green-2)', label: 'Recibida' },
+  recibida: { bg: 'var(--ok-soft)', fg: 'var(--ok-2)', label: 'Recibida' },
   cancelada: { bg: 'var(--red-soft)', fg: 'var(--red)', label: 'Cancelada' },
 };
 

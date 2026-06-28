@@ -291,7 +291,7 @@ export const Catalogo: React.FC = () => {
     if (stock === 0) return { color: 'red', label: 'Agotado' };
     if (stock < p.stock_minimo / 2) return { color: 'red', label: 'Crítico' };
     if (stock < p.stock_minimo) return { color: 'amber', label: 'Bajo' };
-    return { color: 'green', label: 'Normal' };
+    return { color: 'ok', label: 'Normal' };
   };
 
   return (
@@ -329,11 +329,11 @@ export const Catalogo: React.FC = () => {
                   background: `var(--${
                     k.color === 'gray'
                       ? 'line-2'
-                      : `${k.color === 'green' ? 'green-soft' : k.color === 'amber' ? 'amber-soft' : 'red-soft'}`
+                      : `${k.color === 'green' ? 'ok-soft' : k.color === 'amber' ? 'amber-soft' : 'red-soft'}`
                   })`,
                   color:
                     k.color === 'green'
-                      ? 'var(--green-2)'
+                      ? 'var(--ok-2)'
                       : k.color === 'amber'
                       ? 'oklch(0.5 0.12 70)'
                       : k.color === 'red'
@@ -508,7 +508,7 @@ export const Catalogo: React.FC = () => {
                                 style={{
                                   height: '100%',
                                   width: `${pct}%`,
-                                  background: s.color === 'red' ? 'var(--red)' : s.color === 'amber' ? 'var(--amber)' : 'var(--green)',
+                                  background: s.color === 'red' ? 'var(--red)' : s.color === 'amber' ? 'var(--amber)' : 'var(--ok)',
                                   borderRadius: 999,
                                 }}
                               ></div>
@@ -526,7 +526,7 @@ export const Catalogo: React.FC = () => {
                           {(() => {
                             const m = margen(p.precio_publico, p.costo);
                             return (
-                              <div style={{ fontSize: 10, fontWeight: 600, color: m.utilidad >= 0 ? 'var(--green-2)' : 'var(--red)' }}
+                              <div style={{ fontSize: 10, fontWeight: 600, color: m.utilidad >= 0 ? 'var(--ok-2)' : 'var(--red)' }}
                                 title="Margen sobre el costo">
                                 {m.utilidad >= 0 ? '+' : ''}{fmtMXN(m.utilidad)} · {m.porcentaje}%
                               </div>
@@ -580,9 +580,9 @@ export const Catalogo: React.FC = () => {
                       borderRadius: 8,
                       fontWeight: 600,
                       fontSize: 13,
-                      border: `1.5px solid ${moveType === 'entrada' ? 'var(--green)' : 'var(--line)'}`,
-                      background: moveType === 'entrada' ? 'var(--green-soft)' : 'var(--surface)',
-                      color: moveType === 'entrada' ? 'var(--green-2)' : 'var(--ink-2)',
+                      border: `1.5px solid ${moveType === 'entrada' ? 'var(--ok)' : 'var(--line)'}`,
+                      background: moveType === 'entrada' ? 'var(--ok-soft)' : 'var(--surface)',
+                      color: moveType === 'entrada' ? 'var(--ok-2)' : 'var(--ink-2)',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
@@ -732,8 +732,8 @@ export const Catalogo: React.FC = () => {
                           height: 28,
                           borderRadius: 8,
                           flex: 'none',
-                          background: m.tipo === 'entrada' ? 'var(--green-soft)' : 'var(--red-soft)',
-                          color: m.tipo === 'entrada' ? 'var(--green-2)' : 'var(--red)',
+                          background: m.tipo === 'entrada' ? 'var(--ok-soft)' : 'var(--red-soft)',
+                          color: m.tipo === 'entrada' ? 'var(--ok-2)' : 'var(--red)',
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'center',
@@ -760,7 +760,7 @@ export const Catalogo: React.FC = () => {
                       </div>
                       <div
                         className="num"
-                        style={{ fontSize: 13, fontWeight: 700, color: m.tipo === 'entrada' ? 'var(--green-2)' : 'var(--red)' }}
+                        style={{ fontSize: 13, fontWeight: 700, color: m.tipo === 'entrada' ? 'var(--ok-2)' : 'var(--red)' }}
                       >
                         {m.tipo === 'entrada' ? '+' : '−'}
                         {m.cantidad}
@@ -903,7 +903,7 @@ export const Catalogo: React.FC = () => {
                   {newPrecioPublico > 0 && (() => {
                     const m = margen(newPrecioPublico, newCosto);
                     return (
-                      <div className="label" style={{ display: 'flex', justifyContent: 'space-between', color: m.utilidad >= 0 ? 'var(--green-2)' : 'var(--red)', marginBottom: 8 }}>
+                      <div className="label" style={{ display: 'flex', justifyContent: 'space-between', color: m.utilidad >= 0 ? 'var(--ok-2)' : 'var(--red)', marginBottom: 8 }}>
                         <span>Margen</span>
                         <span className="num">{m.utilidad >= 0 ? '+' : ''}{fmtMXN(m.utilidad)} · {m.porcentaje}%</span>
                       </div>

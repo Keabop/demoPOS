@@ -119,7 +119,7 @@ export const PerfilClienteModal: React.FC<PerfilClienteModalProps> = ({
 
 
   const getAvatarBg = () => {
-    return cliente.activo_para_credito ? 'oklch(0.4 0.05 145)' : 'oklch(0.55 0.14 25)';
+    return cliente.activo_para_credito ? 'oklch(0.42 0.10 150)' : 'oklch(0.55 0.14 25)';
   };
 
   const limite = Number(cliente.limite_credito || 0);
@@ -289,11 +289,11 @@ export const PerfilClienteModal: React.FC<PerfilClienteModalProps> = ({
           {/* Status badge */}
           <div style={{
             display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-            padding: '10px 14px', background: cliente.activo_para_credito ? 'var(--green-soft)' : 'var(--red-soft)',
-            borderRadius: 8, border: `1px solid ${cliente.activo_para_credito ? 'var(--green-line)' : 'oklch(0.58 0.16 25 / 0.1)'}`
+            padding: '10px 14px', background: cliente.activo_para_credito ? 'var(--ok-soft)' : 'var(--red-soft)',
+            borderRadius: 8, border: `1px solid ${cliente.activo_para_credito ? 'var(--ok-line)' : 'oklch(0.58 0.16 25 / 0.1)'}`
           }}>
-            <span style={{ fontSize: 12, fontWeight: 600, color: cliente.activo_para_credito ? 'var(--green-2)' : 'var(--red)' }}>Estatus de Crédito:</span>
-            <span className={`badge ${cliente.activo_para_credito ? 'green' : 'red'}`} style={{ fontSize: 11, fontWeight: 700 }}>
+            <span style={{ fontSize: 12, fontWeight: 600, color: cliente.activo_para_credito ? 'var(--ok-2)' : 'var(--red)' }}>Estatus de Crédito:</span>
+            <span className={`badge ${cliente.activo_para_credito ? 'ok' : 'red'}`} style={{ fontSize: 11, fontWeight: 700 }}>
               <span className="dot"></span>
               {cliente.activo_para_credito ? 'Activo (Apto)' : 'Bloqueado (Moroso)'}
             </span>
@@ -347,7 +347,7 @@ export const PerfilClienteModal: React.FC<PerfilClienteModalProps> = ({
                 className="perfil-progress-fill"
                 style={{
                   width: `${credUsedPct}%`,
-                  backgroundColor: saldo > limite ? 'var(--red)' : (credUsedPct > 80 ? 'var(--amber)' : 'var(--green)')
+                  backgroundColor: saldo > limite ? 'var(--red)' : (credUsedPct > 80 ? 'var(--amber)' : 'var(--ok)')
                 }}
               ></div>
             </div>

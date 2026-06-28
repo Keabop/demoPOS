@@ -108,7 +108,7 @@ export const NuevoProveedorModal: React.FC<NuevoProveedorModalProps> = ({
         .modal-footer { display: flex; justify-content: flex-end; gap: 12px; padding: 16px 22px; background: var(--surface-2); border-top: 1px solid var(--line-2); }
         .form-group { display: flex; flex-direction: column; gap: 6px; }
         .error-banner { display: flex; align-items: center; gap: 10px; padding: 12px 16px; background: var(--red-soft); border: 1px solid oklch(0.85 0.1 25); border-radius: var(--radius-sm); color: var(--red); font-size: 13px; }
-        .success-banner { display: flex; align-items: center; gap: 10px; padding: 12px 16px; background: var(--green-soft, oklch(0.95 0.05 150)); border: 1px solid oklch(0.8 0.12 150); border-radius: var(--radius-sm); color: var(--green, oklch(0.5 0.15 150)); font-size: 13px; }
+        .success-banner { display: flex; align-items: center; gap: 10px; padding: 12px 16px; background: var(--ok-soft); border: 1px solid var(--ok-line); border-radius: var(--radius-sm); color: var(--ok-2); font-size: 13px; }
         .spinner { animation: spin 0.8s linear infinite; }
       `}</style>
 

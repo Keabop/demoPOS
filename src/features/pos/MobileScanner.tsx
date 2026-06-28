@@ -250,13 +250,13 @@ export const MobileScanner: React.FC<MobileScannerProps> = ({ session }) => {
           borderRadius: 20,
           fontSize: 11,
           fontWeight: 600,
-          color: status === 'conectado' ? '#a3e635' : '#fbbf24'
+          color: status === 'conectado' ? '#fbbf24' : '#fbbf24'
         }}>
           <span style={{
             width: 6,
             height: 6,
             borderRadius: '50%',
-            background: status === 'conectado' ? '#a3e635' : '#fbbf24',
+            background: status === 'conectado' ? '#fbbf24' : '#fbbf24',
             animation: status === 'conectado' ? 'none' : 'pulse 1.5s infinite'
           }}></span>
           {status === 'conectado' ? 'En línea' : 'Conectando...'}
@@ -285,7 +285,7 @@ export const MobileScanner: React.FC<MobileScannerProps> = ({ session }) => {
             transform: 'translate(-50%, -50%)',
             background: 'rgba(27, 58, 36, 0.95)',
             backdropFilter: 'blur(8px)',
-            border: '1.5px solid #a3e635',
+            border: '1.5px solid #fbbf24',
             padding: '16px 24px',
             borderRadius: 16,
             display: 'flex',
@@ -301,7 +301,7 @@ export const MobileScanner: React.FC<MobileScannerProps> = ({ session }) => {
               width: 38,
               height: 38,
               borderRadius: '50%',
-              background: '#a3e635',
+              background: '#fbbf24',
               color: '#151d19',
               display: 'flex',
               alignItems: 'center',
@@ -375,8 +375,8 @@ export const MobileScanner: React.FC<MobileScannerProps> = ({ session }) => {
                   position: 'absolute',
                   width: '90%',
                   height: '2px',
-                  background: '#a3e635',
-                  boxShadow: '0 0 10px #a3e635',
+                  background: '#fbbf24',
+                  boxShadow: '0 0 10px #fbbf24',
                   animation: 'scan-anim 2s infinite ease-in-out'
                 }}></div>
               </div>
@@ -534,7 +534,7 @@ export const MobileScanner: React.FC<MobileScannerProps> = ({ session }) => {
                   height: 32,
                   borderRadius: 6,
                   background: 'rgba(163, 230, 53, 0.1)',
-                  color: '#a3e635',
+                  color: '#fbbf24',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',

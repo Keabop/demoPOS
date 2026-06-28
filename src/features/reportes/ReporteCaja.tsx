@@ -133,9 +133,9 @@ const fmtFecha = (dateStr?: string) => {
 interface TipoBadge { label: string; cls: string; positive: boolean }
 const tipoBadge = (m: MovimientoCajaConVendedor): TipoBadge => {
   if (m.tipo === 'apertura') return { label: 'Apertura', cls: 'gray', positive: true };
-  if (m.tipo === 'venta') return { label: 'Venta', cls: 'green', positive: true };
-  if (m.tipo === 'abono') return { label: 'Abono', cls: 'green', positive: true };
-  if (m.tipo === 'ingreso') return { label: 'Ingreso', cls: 'green', positive: true };
+  if (m.tipo === 'venta') return { label: 'Venta', cls: 'ok', positive: true };
+  if (m.tipo === 'abono') return { label: 'Abono', cls: 'ok', positive: true };
+  if (m.tipo === 'ingreso') return { label: 'Ingreso', cls: 'ok', positive: true };
   // egreso (el corte es egreso con es_corte; aquí se filtra antes)
   return { label: 'Egreso', cls: 'red', positive: false };
 };
@@ -352,7 +352,7 @@ export const ReporteCaja: React.FC<ReportProps> = ({ startDate, endDate }) => {
       {/* Turno activo */}
       {activeShift && (
         <div className="card ag-rise" style={{ padding: '16px 20px', display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
-          <span className="badge green"><span className="dot" />Turno abierto</span>
+          <span className="badge ok"><span className="dot" />Turno abierto</span>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--ink-2)' }}>
             <Icon name="cash" size={15} color="var(--muted)" /><strong style={{ fontWeight: 600 }}>Caja · {activeShift.vendedorName}</strong>
           </div>
@@ -385,7 +385,7 @@ export const ReporteCaja: React.FC<ReportProps> = ({ startDate, endDate }) => {
         <KpiCard
           label="Diferencia de arqueo" icon="alert" iconBg="var(--amber-soft)" iconColor="var(--amber)"
           value={`${stats.netDiscrepancy < 0 ? '−' : stats.netDiscrepancy > 0 ? '+' : ''}${fmtMXN(Math.abs(stats.netDiscrepancy))}`}
-          valueColor={stats.netDiscrepancy < 0 ? 'oklch(0.5 0.12 70)' : stats.netDiscrepancy > 0 ? 'var(--green-2)' : 'var(--ink)'}
+          valueColor={stats.netDiscrepancy < 0 ? 'oklch(0.5 0.12 70)' : stats.netDiscrepancy > 0 ? 'var(--ok-2)' : 'var(--ink)'}
           spark={sparkData.arqueo}
           sub={`${closedShifts.length} ${closedShifts.length === 1 ? 'corte' : 'cortes'} · contado vs sistema`}
         />
@@ -470,9 +470,9 @@ export const ReporteCaja: React.FC<ReportProps> = ({ startDate, endDate }) => {
                   </div>
                   <span className="num" style={{ fontSize: 13, fontWeight: 700, color: 'var(--ink)', flex: 'none' }}>{fmtMXN(s.countedCash)}</span>
                   {cuadrado ? (
-                    <span className="badge green" style={{ width: 84, justifyContent: 'center' }}><span className="dot" />Cuadrado</span>
+                    <span className="badge ok" style={{ width: 84, justifyContent: 'center' }}><span className="dot" />Cuadrado</span>
                   ) : s.discrepancy > 0 ? (
-                    <span className="badge green" style={{ width: 84, justifyContent: 'center' }}><span className="dot" />+{fmtMXN(s.discrepancy)}</span>
+                    <span className="badge ok" style={{ width: 84, justifyContent: 'center' }}><span className="dot" />+{fmtMXN(s.discrepancy)}</span>
                   ) : (
                     <span className="badge amber" style={{ width: 84, justifyContent: 'center' }}><span className="dot" />−{fmtMXN(Math.abs(s.discrepancy))}</span>
                   )}
@@ -511,7 +511,7 @@ export const ReporteCaja: React.FC<ReportProps> = ({ startDate, endDate }) => {
                       <td className="num" style={{ padding: '11px 12px 11px 0', borderBottom: bdr, fontSize: 12.5, color: 'var(--muted-2)' }}>{fmtHora(m.fecha)}</td>
                       <td style={{ padding: '11px 12px', borderBottom: bdr }}><span className={`badge ${badge.cls}`}>{badge.label}</span></td>
                       <td style={{ padding: '11px 12px', borderBottom: bdr, fontSize: 13, color: 'var(--ink-2)', maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={m.descripcion || ''}>{concepto}</td>
-                      <td className="num" style={{ textAlign: 'right', padding: '11px 0 11px 12px', borderBottom: bdr, fontSize: 13, fontWeight: m.tipo === 'apertura' ? 400 : 700, color: m.tipo === 'apertura' ? 'var(--ink-2)' : badge.positive ? 'var(--green-2)' : 'var(--red)' }}>
+                      <td className="num" style={{ textAlign: 'right', padding: '11px 0 11px 12px', borderBottom: bdr, fontSize: 13, fontWeight: m.tipo === 'apertura' ? 400 : 700, color: m.tipo === 'apertura' ? 'var(--ink-2)' : badge.positive ? 'var(--ok-2)' : 'var(--red)' }}>
                         {m.tipo === 'apertura' ? fmtMXN(monto) : `${badge.positive ? '+' : '−'}${fmtMXN(monto)}`}
                       </td>
                     </tr>
@@ -563,7 +563,7 @@ export const ReporteCaja: React.FC<ReportProps> = ({ startDate, endDate }) => {
                     </td>
                     <td className="num" style={{ padding: '13px 12px', borderBottom: '1px solid var(--line-2)', fontSize: 12.5, color: 'var(--ink-2)' }}>{fmtFecha(s.apertura.fecha)} {fmtHora(s.apertura.fecha)}</td>
                     <td style={{ padding: '13px 12px', borderBottom: '1px solid var(--line-2)', fontSize: 12.5, color: 'var(--ink-2)' }}>
-                      {isClosed ? <span className="num">{fmtFecha(s.cierre?.fecha)} {fmtHora(s.cierre?.fecha)}</span> : <span className="badge green" style={{ fontSize: 10 }}><span className="dot" />Activo</span>}
+                      {isClosed ? <span className="num">{fmtFecha(s.cierre?.fecha)} {fmtHora(s.cierre?.fecha)}</span> : <span className="badge ok" style={{ fontSize: 10 }}><span className="dot" />Activo</span>}
                     </td>
                     <td className="num" style={{ textAlign: 'right', padding: '13px 12px', borderBottom: '1px solid var(--line-2)', fontSize: 12.5, color: 'var(--muted)' }}>{getDurationString(s.durationMs)}</td>
                     <td className="num" style={{ textAlign: 'right', padding: '13px 12px', borderBottom: '1px solid var(--line-2)', fontSize: 13, color: 'var(--ink-2)' }}>{fmtMXN(s.openingCash)}</td>
@@ -574,7 +574,7 @@ export const ReporteCaja: React.FC<ReportProps> = ({ startDate, endDate }) => {
                       ) : cuadrado ? (
                         <span className="badge gray" style={{ fontSize: 10, fontWeight: 600 }}>Cuadrado</span>
                       ) : s.discrepancy > 0 ? (
-                        <span className="badge green" style={{ fontSize: 10, fontWeight: 700 }}>+{fmtMXN(s.discrepancy)}</span>
+                        <span className="badge ok" style={{ fontSize: 10, fontWeight: 700 }}>+{fmtMXN(s.discrepancy)}</span>
                       ) : (
                         <span className="badge red" style={{ fontSize: 10, fontWeight: 700 }}>−{fmtMXN(Math.abs(s.discrepancy))}</span>
                       )}

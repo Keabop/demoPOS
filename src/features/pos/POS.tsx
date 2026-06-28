@@ -688,7 +688,7 @@ ${itemsText}
                       borderRadius: 12, padding: 12, textAlign: 'left',
                       display: 'flex', flexDirection: 'column', gap: 6,
                       transition: 'all 0.12s', position: 'relative',
-                      boxShadow: inCart ? '0 0 0 3px oklch(0.58 0.13 145 / 0.12)' : 'var(--shadow-sm)',
+                      boxShadow: inCart ? '0 0 0 3px oklch(0.69 0.14 76 / 0.12)' : 'var(--shadow-sm)',
                       cursor: stockVal <= 0 ? 'not-allowed' : 'pointer',
                       opacity: stockVal <= 0 ? 0.5 : 1
                     }}
@@ -704,7 +704,7 @@ ${itemsText}
                         {p.nombre.substring(0, 1).toUpperCase()}
                       </div>
                       {inCart && (
-                        <div style={{ position: 'absolute', top: 6, right: 6, width: 24, height: 24, borderRadius: 999, background: 'var(--green)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700 }}>
+                        <div style={{ position: 'absolute', top: 6, right: 6, width: 24, height: 24, borderRadius: 999, background: 'var(--green)', color: 'var(--ink)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700 }}>
                           {inCart.qty}
                         </div>
                       )}
@@ -811,7 +811,7 @@ ${itemsText}
                       <span>Estatus crédito:</span>
                       <span style={{
                         fontWeight: 700,
-                        color: selectedClient.activo_para_credito ? 'var(--green)' : 'var(--red)'
+                        color: selectedClient.activo_para_credito ? 'var(--ok)' : 'var(--red)'
                       }}>
                         {selectedClient.activo_para_credito ? 'ACTIVO (Apto)' : 'BLOQUEADO (Moroso)'}
                       </span>
@@ -1017,7 +1017,7 @@ ${itemsText}
                             </span>
                           </div>
                           <div style={{ height: 6, borderRadius: 999, background: 'var(--line-2)', overflow: 'hidden' }}>
-                            <div style={{ height: '100%', width: `${Math.max(2, pct)}%`, borderRadius: 999, background: excede ? 'var(--red)' : pct > 80 ? 'var(--amber)' : 'var(--green)' }} />
+                            <div style={{ height: '100%', width: `${Math.max(2, pct)}%`, borderRadius: 999, background: excede ? 'var(--red)' : pct > 80 ? 'var(--amber)' : 'var(--ok)' }} />
                           </div>
                           <div style={{ fontSize: 10, color: excede ? 'var(--red)' : 'var(--muted)' }}>
                             {excede ? `Excede el límite por ${fmtMXN(proyectado - limite)}` : `Disponible después: ${fmtMXN(limite - proyectado)}`}
@@ -1155,7 +1155,7 @@ ${itemsText}
                     {montoRecibido !== '' && !isNaN(Number(montoRecibido)) && (() => {
                       const cambio = round2(Number(montoRecibido) - total);
                       return (
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontWeight: 700, color: cambio >= 0 ? 'var(--green-2)' : 'var(--red)' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontWeight: 700, color: cambio >= 0 ? 'var(--ok-2)' : 'var(--red)' }}>
                           <span>{cambio >= 0 ? 'Cambio' : 'Falta'}</span>
                           <span className="num" style={{ fontSize: 16 }}>{fmtMXN(Math.abs(cambio))}</span>
                         </div>
