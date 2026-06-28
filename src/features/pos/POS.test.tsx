@@ -126,7 +126,7 @@ describe('POS Component', () => {
     expect(screen.queryByText('IVA Trasladado')).toBeNull(); // Should be hidden
   });
 
-  it.skip('allows adding items by scanning SKU / barcode in input field', async () => {
+  it('allows adding items by scanning SKU / barcode in input field', async () => {
     render(<POS vendedorId="vend-1" vendedorNombre="Carlos Núñez" />);
 
     await waitFor(() => {

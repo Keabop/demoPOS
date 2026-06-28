@@ -11,7 +11,7 @@ import { margen } from '../../lib/money';
 import { EditarProductoModal } from './EditarProductoModal';
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
 
-const SHOW_BARCODE_FEATURES = false;
+const SHOW_BARCODE_FEATURES = true;
 
 
 interface MovimientoReciente {

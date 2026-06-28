@@ -16,7 +16,10 @@ import { exportarCotizacionPDF } from '../../lib/pdf/cotizacionPDF';
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
 import { CheckoutSuccessModal } from './CheckoutSuccessModal';
 
-const SHOW_BARCODE_FEATURES = false;
+const SHOW_BARCODE_FEATURES = true;
+// Escáner de CELULAR sincronizado: usa Supabase Realtime (broadcast) entre dispositivos.
+// El shim PGlite de la demo lo trata como no-op, así que se mantiene oculto (no funcionaría).
+const SHOW_MOBILE_SCAN_SYNC = false;
 
 interface POSProps {
   vendedorId: string;
@@ -593,16 +596,20 @@ ${itemsText}
   return (
     <>
       <Topbar title="Nueva Venta" subtitle={`Vendedor: ${vendedorNombre} · Caja 1`}>
-        {SHOW_BARCODE_FEATURES && (
+        {(SHOW_BARCODE_FEATURES || SHOW_MOBILE_SCAN_SYNC) && (
           <>
-            <button className="btn btn-secondary btn-pos-sync" onClick={startMobileSync}>
-              <Icon name="device" size={16} />
-              Escanear con Celular
-            </button>
-            <button className="btn btn-secondary btn-pos-webcam" onClick={() => { setCameraError(null); setShowWebcamModal(true); }}>
-              <Icon name="eye" size={16} />
-              Escanear con WebCam
-            </button>
+            {SHOW_MOBILE_SCAN_SYNC && (
+              <button className="btn btn-secondary btn-pos-sync" onClick={startMobileSync}>
+                <Icon name="device" size={16} />
+                Escanear con Celular
+              </button>
+            )}
+            {SHOW_BARCODE_FEATURES && (
+              <button className="btn btn-secondary btn-pos-webcam" onClick={() => { setCameraError(null); setShowWebcamModal(true); }}>
+                <Icon name="eye" size={16} />
+                Escanear con WebCam
+              </button>
+            )}
           </>
         )}
       </Topbar>
@@ -1315,7 +1322,7 @@ ${itemsText}
       )}
 
       {/* MOBILE SCANNER SYNC MODAL */}
-      {SHOW_BARCODE_FEATURES && showMobileModal && (
+      {SHOW_MOBILE_SCAN_SYNC && showMobileModal && (
         <div style={{
           position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
           background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)',

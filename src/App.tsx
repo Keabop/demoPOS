@@ -23,8 +23,9 @@ import { Usuarios } from './features/admin/Usuarios';
 import { Compras } from './features/compras/Compras';
 import './App.css';
 
-// Escáner de barras retirado del alcance (captura manual). Cambiar a true para reactivar.
-const SHOW_BARCODE_FEATURES = false;
+// La vista de escáner de CELULAR sincronizado (ruta ?scan_session) usa Supabase Realtime
+// broadcast, no soportado por el shim PGlite de la demo. Se mantiene deshabilitada.
+const SHOW_MOBILE_SCAN_SYNC = false;
 
 
 const LoadingScreen = () => (
@@ -89,9 +90,9 @@ function AppContent() {
   }
 
   // If this is a synchronized mobile scanner, bypass login/sidebar.
-  // Gateado por SHOW_BARCODE_FEATURES (escáner retirado del alcance): la ruta
-  // ?scan_session no abre la cámara salvo que se reactive la feature.
-  if (scanSession && SHOW_BARCODE_FEATURES) {
+  // Gateado por SHOW_MOBILE_SCAN_SYNC: el escáner de celular requiere Realtime broadcast
+  // (no soportado por el shim PGlite), así que la ruta ?scan_session queda inerte en la demo.
+  if (scanSession && SHOW_MOBILE_SCAN_SYNC) {
     return <MobileScanner session={scanSession} />;
   }
 
