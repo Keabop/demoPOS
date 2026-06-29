@@ -19,6 +19,9 @@ const FK_TARGET: Record<string, Record<string, string>> = {
   ordenes_compra: { proveedor_id: 'proveedores', creado_por: 'perfiles' },
   ordenes_compra_detalles: { orden_id: 'ordenes_compra', producto_id: 'productos' },
   proveedor_productos: { proveedor_id: 'proveedores', producto_id: 'productos' },
+  devoluciones: { venta_id: 'ventas', vendedor_id: 'perfiles' },
+  devoluciones_detalles: { devolucion_id: 'devoluciones', venta_detalle_id: 'ventas_detalles', producto_id: 'productos', lote_id: 'lotes' },
+  pagos_proveedor: { orden_id: 'ordenes_compra' },
 };
 
 export type Field =

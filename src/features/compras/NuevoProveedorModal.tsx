@@ -22,6 +22,7 @@ export const NuevoProveedorModal: React.FC<NuevoProveedorModalProps> = ({
   const [email, setEmail] = useState('');
   const [direccion, setDireccion] = useState('');
   const [rfc, setRfc] = useState('');
+  const [local, setLocal] = useState(false);
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
@@ -36,6 +37,7 @@ export const NuevoProveedorModal: React.FC<NuevoProveedorModalProps> = ({
       setEmail(proveedor?.email ?? '');
       setDireccion(proveedor?.direccion ?? '');
       setRfc(proveedor?.rfc ?? '');
+      setLocal(proveedor?.local ?? false);
       setErrorMsg(null);
       setSuccessMsg(null);
     }
@@ -66,6 +68,7 @@ export const NuevoProveedorModal: React.FC<NuevoProveedorModalProps> = ({
         email: email.trim() || null,
         direccion: direccion.trim() || null,
         rfc: rfc.trim() || null,
+        local,
       };
       if (esEdicion && proveedor) {
         const { error } = await supabase.from('proveedores').update(datos).eq('id', proveedor.id);
@@ -108,7 +111,7 @@ export const NuevoProveedorModal: React.FC<NuevoProveedorModalProps> = ({
         .modal-footer { display: flex; justify-content: flex-end; gap: 12px; padding: 16px 22px; background: var(--surface-2); border-top: 1px solid var(--line-2); }
         .form-group { display: flex; flex-direction: column; gap: 6px; }
         .error-banner { display: flex; align-items: center; gap: 10px; padding: 12px 16px; background: var(--red-soft); border: 1px solid oklch(0.85 0.1 25); border-radius: var(--radius-sm); color: var(--red); font-size: 13px; }
-        .success-banner { display: flex; align-items: center; gap: 10px; padding: 12px 16px; background: var(--ok-soft); border: 1px solid var(--ok-line); border-radius: var(--radius-sm); color: var(--ok-2); font-size: 13px; }
+        .success-banner { display: flex; align-items: center; gap: 10px; padding: 12px 16px; background: var(--green-soft, oklch(0.95 0.05 150)); border: 1px solid oklch(0.8 0.12 150); border-radius: var(--radius-sm); color: var(--green, oklch(0.5 0.15 150)); font-size: 13px; }
         .spinner { animation: spin 0.8s linear infinite; }
       `}</style>
 
@@ -156,6 +159,15 @@ export const NuevoProveedorModal: React.FC<NuevoProveedorModalProps> = ({
               <label className="label" htmlFor="prov-dir">Dirección</label>
               <input id="prov-dir" type="text" className="input" value={direccion}
                 onChange={(e) => setDireccion(e.target.value)} disabled={loading} />
+            </div>
+            <div className="form-group">
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: loading ? 'default' : 'pointer' }}>
+                <input type="checkbox" checked={local} onChange={(e) => setLocal(e.target.checked)} disabled={loading} />
+                <span style={{ fontWeight: 600 }}>Proveedor local (Irapuato)</span>
+              </label>
+              <span style={{ fontSize: 12, color: 'var(--muted)' }}>
+                Compra directa: capturas la remisión/pagaré que te da el comercio, sin PDF de orden.
+              </span>
             </div>
           </div>
 

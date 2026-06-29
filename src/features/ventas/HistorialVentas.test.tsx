@@ -5,11 +5,15 @@ import { HistorialVentas } from './HistorialVentas';
 // Estado del mock, definido con vi.hoisted para que exista antes del vi.mock hoisteado.
 const h = vi.hoisted(() => ({
   calls: {} as Record<string, unknown[]>,
+  orderCalls: [] as unknown[][],
   fromMock: vi.fn(),
 }));
 
 vi.mock('../../lib/supabase', () => ({
-  supabase: { from: (...a: unknown[]) => h.fromMock(...a) },
+  supabase: {
+    from: (...a: unknown[]) => h.fromMock(...a),
+    rpc: vi.fn().mockResolvedValue({ data: null, error: null }),
+  },
 }));
 
 // Topbar trae su propia lógica de tiempo real (supabase.channel); no es lo que probamos
@@ -19,8 +23,12 @@ vi.mock('../../components/Topbar', () => ({ Topbar: () => null }));
 // Builder "thenable" que registra cada método encadenado de Supabase.
 function makeQuery(result: unknown) {
   const q: Record<string, (...a: unknown[]) => unknown> = {};
-  for (const m of ['select', 'gte', 'lte', 'order', 'eq']) {
-    q[m] = (...args: unknown[]) => { h.calls[m] = args; return q; };
+  for (const m of ['select', 'gte', 'lte', 'order', 'eq', 'or', 'range']) {
+    q[m] = (...args: unknown[]) => {
+      h.calls[m] = args;
+      if (m === 'order') h.orderCalls.push(args);
+      return q;
+    };
   }
   (q as { then: unknown }).then = (resolve: (v: unknown) => void) => resolve(result);
   return q;
@@ -28,6 +36,7 @@ function makeQuery(result: unknown) {
 
 beforeEach(() => {
   for (const k of Object.keys(h.calls)) delete h.calls[k];
+  h.orderCalls.length = 0;
   h.fromMock.mockReset();
   h.fromMock.mockImplementation(() => makeQuery({ data: [], error: null }));
 });
@@ -43,5 +52,23 @@ describe('HistorialVentas — filtro de presentación', () => {
     render(<HistorialVentas rol="admin" vendedorId="admin-9" />);
     await screen.findByText('Total vendido');
     expect(h.calls.eq).toBeUndefined();
+  });
+});
+
+describe('HistorialVentas — conteo y orden deterministas', () => {
+  it('pide el conteo EXACTO y pagina con un desempate único por id', async () => {
+    // rol vendedor: solo corre la consulta principal (no la lista de vendedores),
+    // así las aserciones sobre select/order no se contaminan.
+    render(<HistorialVentas rol="vendedor" vendedorId="vend-1" />);
+    await screen.findByText('Total vendido');
+
+    // La barra de acciones y el paginador deben usar el conteo real, no la
+    // estimación del planner (que sobre una vista con JOINs es imprecisa).
+    expect(h.calls.select).toEqual(['*', { count: 'exact' }]);
+
+    // El orden debe llevar `id` como desempate además de `fecha`; sin él, las
+    // páginas/lotes de .range() se solapan y la exportación pierde filas.
+    expect(h.orderCalls).toContainEqual(['fecha', { ascending: false }]);
+    expect(h.orderCalls).toContainEqual(['id', { ascending: false }]);
   });
 });

@@ -2,23 +2,17 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 import { Icon } from '../../components/Icon';
 import type { Perfil } from '../../types';
+import { PermisosEditor, type PerfilForm } from './PermisosEditor';
+import { permisosCompletos, permisosDePlantilla, derivarRol } from '../../lib/capacidades';
 
 interface EditarUsuarioModalProps {
   isOpen: boolean;
   usuario: Perfil | null;
-  /** Si es true, el rol no se puede cambiar (p.ej. el admin no puede degradarse a sí mismo). */
+  /** Si es true, no se puede cambiar el propio perfil/capa (p.ej. el admin no puede degradarse a sí mismo). */
   bloquearRol?: boolean;
   onClose: () => void;
   onSaved?: () => void;
 }
-
-type Rol = 'admin' | 'vendedor' | 'visitante';
-
-const ROLES: { value: Rol; label: string }[] = [
-  { value: 'vendedor', label: 'Vendedor' },
-  { value: 'visitante', label: 'Visitante' },
-  { value: 'admin', label: 'Administrador' },
-];
 
 export const EditarUsuarioModal: React.FC<EditarUsuarioModalProps> = ({
   isOpen,
@@ -28,7 +22,7 @@ export const EditarUsuarioModal: React.FC<EditarUsuarioModalProps> = ({
   onSaved,
 }) => {
   const [nombre, setNombre] = useState('');
-  const [rol, setRol] = useState<Rol>('vendedor');
+  const [perfil, setPerfil] = useState<PerfilForm>({ plantilla: 'personalizado', etiqueta: '', permisos: { ...permisosDePlantilla('vendedor')!.permisos } });
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
@@ -37,7 +31,11 @@ export const EditarUsuarioModal: React.FC<EditarUsuarioModalProps> = ({
   useEffect(() => {
     if (usuario) {
       setNombre(usuario.nombre);
-      setRol(usuario.rol);
+      setPerfil({
+        plantilla: usuario.plantilla || 'personalizado',
+        etiqueta: usuario.etiqueta || '',
+        permisos: permisosCompletos(usuario.permisos, usuario.rol),
+      });
       setErrorMsg(null);
       setSuccessMsg(null);
     }
@@ -66,8 +64,13 @@ export const EditarUsuarioModal: React.FC<EditarUsuarioModalProps> = ({
       // Solo nombre y rol viven en public.perfiles y son editables desde el cliente
       // (la RLS `perfiles_update_admin` lo permite al admin). El rol solo se envía
       // si no está bloqueado, para no degradar al propio administrador.
-      const cambios: { nombre: string; rol?: Rol } = { nombre: nombreLimpio };
-      if (!bloquearRol) cambios.rol = rol;
+      const cambios: { nombre: string; etiqueta: string; plantilla: string; permisos: PerfilForm['permisos']; rol?: string } = {
+        nombre: nombreLimpio,
+        etiqueta: perfil.etiqueta.trim() || 'Usuario',
+        plantilla: perfil.plantilla,
+        permisos: perfil.permisos,
+      };
+      if (!bloquearRol) cambios.rol = derivarRol(perfil);
 
       const { error } = await supabase
         .from('perfiles')
@@ -130,8 +133,8 @@ export const EditarUsuarioModal: React.FC<EditarUsuarioModalProps> = ({
         }
         .success-banner {
           display: flex; align-items: center; gap: 10px; padding: 12px 16px;
-          background: var(--ok-soft); border: 1px solid var(--ok-line);
-          border-radius: var(--radius-sm); color: var(--ok-2); font-size: 13px;
+          background: var(--green-soft, oklch(0.95 0.05 150)); border: 1px solid oklch(0.8 0.12 150);
+          border-radius: var(--radius-sm); color: var(--green, oklch(0.5 0.15 150)); font-size: 13px;
         }
         .field-hint { font-size: 12px; color: var(--muted); }
         .spinner { animation: spin 0.8s linear infinite; }
@@ -174,23 +177,10 @@ export const EditarUsuarioModal: React.FC<EditarUsuarioModalProps> = ({
               />
             </div>
 
-            <div className="form-group">
-              <label className="label" htmlFor="edit-rol">Rol *</label>
-              <select
-                id="edit-rol"
-                className="input"
-                value={rol}
-                onChange={(e) => setRol(e.target.value as Rol)}
-                disabled={loading || bloquearRol}
-              >
-                {ROLES.map((r) => (
-                  <option key={r.value} value={r.value}>{r.label}</option>
-                ))}
-              </select>
-              {bloquearRol && (
-                <span className="field-hint">No puedes cambiar tu propio rol mientras estás conectado.</span>
-              )}
-            </div>
+            <PermisosEditor value={perfil} onChange={setPerfil} disabled={loading || bloquearRol} />
+            {bloquearRol && (
+              <span className="field-hint">No puedes cambiar tu propio perfil/capa mientras estás conectado.</span>
+            )}
           </div>
 
           <div className="modal-footer">

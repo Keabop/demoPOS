@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase } from '../../lib/supabase';
 import { toast } from '../../lib/toast';
 import type { Producto, Cliente } from '../../types';
@@ -8,13 +8,15 @@ import { Topbar } from '../../components/Topbar';
 import { NumberInput } from '../../components/NumberInput';
 import { fmtMXN } from '../../lib/format';
 import { calcularTotales, subtotalLinea, round2 } from '../../lib/money';
-import { useConfig } from '../config/ConfigContext';
 import { getConfig } from '../../lib/configNegocio';
-import { generarFolioVenta, generarFolioCotizacion } from '../../lib/folios';
 import { fechaVencimientoDesdeHoy } from '../../lib/dates';
 import { exportarCotizacionPDF } from '../../lib/pdf/cotizacionPDF';
+import { exportarNotaPagarePDF } from '../../lib/pdf/notaCreditoPagarePDF';
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
 import { CheckoutSuccessModal } from './CheckoutSuccessModal';
+import { ClienteCombobox } from './ClienteCombobox';
+import { precioPorNivel, nivelPrecioDefault, NIVELES_PRECIO, type NivelPrecio } from '../../lib/precios';
+import { useAlActivar } from '../../hooks/useAlActivar';
 
 const SHOW_BARCODE_FEATURES = true;
 // Escáner de CELULAR sincronizado: usa Supabase Realtime (broadcast) entre dispositivos.
@@ -25,12 +27,12 @@ interface POSProps {
   vendedorId: string;
   vendedorNombre: string;
   onNav?: (screen: string) => void;
+  activo?: boolean; // keep-alive: true cuando esta pantalla es la visible
 }
 
-export const POS: React.FC<POSProps> = ({ vendedorId, vendedorNombre, onNav }) => {
+export const POS: React.FC<POSProps> = ({ vendedorId, vendedorNombre, onNav, activo }) => {
   // Database States
   const [products, setProducts] = useState<Producto[]>([]);
-  const [clients, setClients] = useState<Cliente[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -38,49 +40,49 @@ export const POS: React.FC<POSProps> = ({ vendedorId, vendedorNombre, onNav }) =
   const [isCajaAbierta, setIsCajaAbierta] = useState<boolean>(false);
   const [checkingCaja, setCheckingCaja] = useState<boolean>(true);
 
-  useEffect(() => {
-    const checkCaja = async () => {
-      try {
-        const { data: apData, error: apErr } = await supabase
-          .from('movimientos_caja')
-          .select('*')
-          .eq('tipo', 'apertura')
-          .order('fecha', { ascending: false })
-          .limit(1);
+  const checkCaja = useCallback(async () => {
+    try {
+      const { data: apData, error: apErr } = await supabase
+        .from('movimientos_caja')
+        .select('*')
+        .eq('tipo', 'apertura')
+        .order('fecha', { ascending: false })
+        .limit(1);
 
-        if (apErr) throw apErr;
+      if (apErr) throw apErr;
 
-        if (!apData || apData.length === 0) {
-          setIsCajaAbierta(false);
-          return;
-        }
-
-        const lastApertura = apData[0];
-
-        const { data: clData, error: clErr } = await supabase
-          .from('movimientos_caja')
-          .select('*')
-          .eq('tipo', 'egreso')
-          .eq('es_corte', true)
-          .order('fecha', { ascending: false })
-          .limit(1);
-
-        if (clErr) throw clErr;
-
-        const lastCorte = clData && clData.length > 0 ? clData[0] : null;
-
-        if (lastCorte && new Date(lastCorte.fecha).getTime() > new Date(lastApertura.fecha).getTime()) {
-          setIsCajaAbierta(false);
-        } else {
-          setIsCajaAbierta(true);
-        }
-      } catch (err) {
-        console.error('Error checking caja in POS:', err);
-      } finally {
-        setCheckingCaja(false);
+      if (!apData || apData.length === 0) {
+        setIsCajaAbierta(false);
+        return;
       }
-    };
 
+      const lastApertura = apData[0];
+
+      const { data: clData, error: clErr } = await supabase
+        .from('movimientos_caja')
+        .select('*')
+        .eq('tipo', 'egreso')
+        .eq('es_corte', true)
+        .order('fecha', { ascending: false })
+        .limit(1);
+
+      if (clErr) throw clErr;
+
+      const lastCorte = clData && clData.length > 0 ? clData[0] : null;
+
+      if (lastCorte && new Date(lastCorte.fecha).getTime() > new Date(lastApertura.fecha).getTime()) {
+        setIsCajaAbierta(false);
+      } else {
+        setIsCajaAbierta(true);
+      }
+    } catch (err) {
+      console.error('Error checking caja in POS:', err);
+    } finally {
+      setCheckingCaja(false);
+    }
+  }, []);
+
+  useEffect(() => {
     checkCaja();
 
     const channel = supabase
@@ -97,20 +99,28 @@ export const POS: React.FC<POSProps> = ({ vendedorId, vendedorNombre, onNav }) =
     return () => {
       supabase.removeChannel(channel);
     };
-  }, []);
+  }, [checkCaja]);
 
   // Cart & Transaction States
   const [cart, setCart] = useState<{ id: string; qty: number }[]>([]);
   const [search, setSearch] = useState('');
   const [scan, setScan] = useState('');
   const [selectedCat, setSelectedCat] = useState('Todos');
+  // Pestaña activa en móvil/tablet angosta (≤900px): alterna entre el catálogo
+  // ('productos') y el panel de venta ('venta') para no tener que recorrer todo el
+  // catálogo antes de cobrar. En escritorio (2 columnas) se ignora: ambas se ven.
+  const [mobileTab, setMobileTab] = useState<'productos' | 'venta'>('productos');
   const [tipoVenta, setTipoVenta] = useState<'anonima' | 'cliente'>('cliente');
   const [credito, setCredito] = useState(false);
   const [plazoDias, setPlazoDias] = useState<number>(30);
   const [metodoPago, setMetodoPago] = useState<'efectivo' | 'tarjeta' | 'debito' | 'transferencia'>('efectivo');
   const [montoRecibido, setMontoRecibido] = useState<string>(''); // efectivo recibido para calcular el vuelto
   const [selectedClient, setSelectedClient] = useState<Cliente | null>(null);
-  
+  const [nivelPrecio, setNivelPrecio] = useState<NivelPrecio>('contado');
+  // Saldo del cliente CON interés moratorio (on-demand). El límite real lo valida el
+  // RPC en el servidor; esto es para el aviso/proyección en pantalla.
+  const [saldoClienteInteres, setSaldoClienteInteres] = useState<number | null>(null);
+
   // Modals States
   const [showWebcamModal, setShowWebcamModal] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
@@ -126,25 +136,47 @@ export const POS: React.FC<POSProps> = ({ vendedorId, vendedorNombre, onNav }) =
       setPlazoDias(30);
     }
   }, [selectedClient]);
+
+  // Saldo con interés del cliente seleccionado (para el crédito proyectado en pantalla).
+  useEffect(() => {
+    if (!selectedClient) { setSaldoClienteInteres(null); return; }
+    let cancel = false;
+    (async () => {
+      const { data } = await supabase.rpc('fn_saldo_cliente', { p_cliente_id: selectedClient.id });
+      if (cancel) return;
+      const fila = Array.isArray(data) ? data[0] : null;
+      setSaldoClienteInteres(fila ? Number(fila.saldo_total) : Number(selectedClient.saldo_deudor || 0));
+    })();
+    return () => { cancel = true; };
+  }, [selectedClient]);
+
+  // El nivel de precio se pre-selecciona según el cliente y si la venta es a crédito.
+  // El vendedor puede cambiarlo; vuelve al default si cambia el cliente o el toggle de crédito.
+  useEffect(() => {
+    setNivelPrecio(nivelPrecioDefault(selectedClient, credito));
+  }, [selectedClient, credito]);
+
   const [completedSale, setCompletedSale] = useState<{
     folio: string;
     subtotal: number;
     iva: number;
+    ieps: number;
     total: number;
     clientName: string | null;
     clientPhone: string | null;
     clientLada: string;
-    cartItems: Array<Producto & { qty: number }>;
+    clientRancho: string | null;
+    clientNumero: number | null;
+    plazoDias: number;
+    cartItems: Array<Producto & { qty: number; precioVendido: number }>;
     metodoPago: string;
     efectivoRecibido: number | null;
     cambio: number | null;
   } | null>(null);
 
-  // Configuración de negocio (IVA configurable, moneda, etc.).
-  const { config } = useConfig();
-
   // References
   const scanInputRef = useRef<HTMLInputElement>(null);
+  const gridRef = useRef<HTMLDivElement>(null);
   const realtimeChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   // Guard síncrono contra doble-cobro: setLoading es asíncrono y no bloquea un
   // segundo clic antes de que React re-renderice el botón deshabilitado.
@@ -185,17 +217,6 @@ export const POS: React.FC<POSProps> = ({ vendedorId, vendedorNombre, onNav }) =
       if (prodsErr) throw prodsErr;
       setProducts(prods || []);
 
-      // Load clients
-      const { data: clis, error: clisErr } = await supabase
-        .from('clientes')
-        .select('*')
-        .order('nombre', { ascending: true });
-      if (clisErr) throw clisErr;
-      setClients(clis || []);
-
-      if (clis && clis.length > 0) {
-        // We no longer auto-select clis[0] by default to allow "Seleccione el cliente..." placeholder
-      }
     } catch (err) {
       console.error('Error al cargar datos del POS:', err);
       setLoadError(err instanceof Error ? err.message : 'No se pudieron cargar productos y clientes. Revisa tu conexión e inténtalo de nuevo.');
@@ -211,6 +232,10 @@ export const POS: React.FC<POSProps> = ({ vendedorId, vendedorNombre, onNav }) =
       scanInputRef.current.focus();
     }
   }, []);
+
+  // Keep-alive: al volver a esta pantalla, refrescar catálogo (stock) y estado de caja
+  // sin perder el carrito ni el cliente seleccionado.
+  useAlActivar(activo ?? true, () => { loadData(); checkCaja(); });
 
   // Keyboard shortcut listener (F2 to focus barcode scanner)
   useEffect(() => {
@@ -377,27 +402,24 @@ export const POS: React.FC<POSProps> = ({ vendedorId, vendedorNombre, onNav }) =
     return { ...p, qty: c.qty };
   });
 
-  // Calculate pricing based on public or wholesale
-  const getProductPrice = (p: Producto) => {
-    // We can implement discount if wholesale quantity, or let type determine.
-    // For now we use precio_publico
-    return Number(p.precio_publico);
-  };
+  // Único punto de decisión del precio: depende del nivel elegido para la venta
+  // (Contado/Crédito/Subdistribuidor). Cae a Contado si el nivel no tiene precio capturado.
+  const getProductPrice = (p: Producto) => precioPorNivel(p, nivelPrecio);
 
-  // IVA configurable: cada producto usa su propia tasa; si es 0 (caso AGROMAR y casi
-  // todo el catálogo de la demo), cae al IVA por defecto del negocio (configuracion.iva_default).
-  const tasaIvaDefault = Number(config.ivaDefault) || 0;
-  const { subtotal, iva, total } = calcularTotales(
+  const { subtotal, iva, ieps, total } = calcularTotales(
     cartItems.map(c => ({
       precioUnitario: getProductPrice(c),
       cantidad: c.qty,
-      tasaIva: Number(c.tasa_iva) || tasaIvaDefault,
+      tasaIva: Number(c.tasa_iva || 0),
+      tasaIeps: Number(c.tasa_ieps || 0),
     }))
   );
 
   // Checkout process
-  const handleCotizacion = (modo: 'descargar' | 'imprimir' = 'descargar') => {
+  const handleCotizacion = async (modo: 'descargar' | 'imprimir' = 'descargar') => {
     if (cartItems.length === 0) return;
+    const { data: folioCot, error: folioErr } = await supabase.rpc('fn_siguiente_folio_cotizacion');
+    if (folioErr) { toast.error('No se pudo generar el folio de la cotización.'); return; }
     const partidas = cartItems.map((it, i) => ({
       numero: i + 1,
       unidad: it.unidad,
@@ -411,10 +433,37 @@ export const POS: React.FC<POSProps> = ({ vendedorId, vendedorNombre, onNav }) =
       ? { nombre: selectedClient.nombre, direccion: selectedClient.rancho, telefono: selectedClient.telefono }
       : { nombre: 'Público en general' };
     exportarCotizacionPDF({
-      folio: generarFolioCotizacion(),
+      folio: String(folioCot),
       fecha: new Date().toLocaleDateString('es-MX'),
       cliente,
       partidas,
+    }, modo);
+  };
+
+  // Genera el pagaré de la venta a crédito recién registrada (desde completedSale).
+  const handleImprimirPagare = (modo: 'descargar' | 'imprimir' = 'imprimir') => {
+    const cs = completedSale;
+    if (!cs) return;
+    exportarNotaPagarePDF({
+      folio: cs.folio,
+      claveCliente: cs.clientNumero != null ? String(cs.clientNumero) : '—',
+      cliente: { nombre: cs.clientName ?? 'Cliente', direccion: cs.clientRancho ?? undefined },
+      fechaEmision: new Date().toLocaleDateString('es-MX'),
+      fechaLimite: fechaVencimientoDesdeHoy(cs.plazoDias),
+      partidas: cs.cartItems.map(it => ({
+        cantidad: it.qty,
+        unidad: it.unidad,
+        descripcion: it.nombre,
+        ivaPct: Math.round(Number(it.tasa_iva || 0) * 100),
+        iepsPct: Math.round(Number(it.tasa_ieps || 0) * 100),
+        pu: it.precioVendido,
+        importe: round2(it.precioVendido * it.qty),
+      })),
+      totalPiezas: cs.cartItems.reduce((s, it) => s + Number(it.qty), 0),
+      subtotal: cs.subtotal,
+      iva: cs.iva,
+      ieps: cs.ieps,
+      total: cs.total,
     }, modo);
   };
 
@@ -450,24 +499,21 @@ export const POS: React.FC<POSProps> = ({ vendedorId, vendedorNombre, onNav }) =
     // Prepare variables
     const clienteId = tipoVenta === 'cliente' ? selectedClient?.id : null;
     const tipoPago = credito ? 'credito' : metodoPago;
-    
-    // Folio de venta (la generación impura vive en lib/folios para mantener puro el render).
-    const generatedFolio = generarFolioVenta();
 
     // Map cart items to JSONB structure for the RPC function
     const detalles = lineasValidas.map(it => ({
       producto_id: it.id,
       cantidad: it.qty,
       precio_unitario: getProductPrice(it),
-      subtotal: subtotalLinea(getProductPrice(it), it.qty)
+      subtotal: subtotalLinea(getProductPrice(it), it.qty),
+      ieps: round2(getProductPrice(it) * it.qty * Number(it.tasa_ieps || 0)),
     }));
 
     try {
       setLoading(true);
 
-      // Call database RPC transaction
-      const { error } = await supabase.rpc('fn_registrar_venta_completa', {
-        p_folio: generatedFolio,
+      // Call database RPC transaction (la BD asigna el folio secuencial y lo devuelve)
+      const { data, error } = await supabase.rpc('fn_registrar_venta_completa', {
         p_cliente_id: clienteId,
         p_vendedor_id: vendedorId,
         p_tipo_pago: tipoPago,
@@ -475,21 +521,28 @@ export const POS: React.FC<POSProps> = ({ vendedorId, vendedorNombre, onNav }) =
         p_iva: iva,
         p_total: total,
         p_detalles: detalles,
-        p_plazo_dias: plazoDias
+        p_plazo_dias: plazoDias,
+        p_ieps: ieps,
+        p_nivel_precio: nivelPrecio
       });
 
       if (error) throw error;
+      const ventaFolio = (data as { folio: string }).folio;
 
       playBeep();
       setCompletedSale({
-        folio: generatedFolio,
+        folio: ventaFolio,
         subtotal: subtotal,
         iva: iva,
+        ieps: ieps,
         total: total,
         clientName: tipoVenta === 'cliente' ? (selectedClient?.nombre || null) : null,
         clientPhone: tipoVenta === 'cliente' ? (selectedClient?.telefono || null) : null,
         clientLada: (tipoVenta === 'cliente' ? selectedClient?.lada : null) || '52',
-        cartItems: [...lineasValidas],
+        clientRancho: tipoVenta === 'cliente' ? (selectedClient?.rancho || null) : null,
+        clientNumero: tipoVenta === 'cliente' ? (selectedClient?.numero_cliente ?? null) : null,
+        plazoDias: plazoDias,
+        cartItems: lineasValidas.map(it => ({ ...it, precioVendido: getProductPrice(it) })),
         metodoPago: tipoPago,
         efectivoRecibido: (!credito && metodoPago === 'efectivo' && montoRecibido !== '' && !isNaN(Number(montoRecibido))) ? round2(Number(montoRecibido)) : null,
         cambio: (!credito && metodoPago === 'efectivo' && montoRecibido !== '' && !isNaN(Number(montoRecibido))) ? round2(Number(montoRecibido) - total) : null,
@@ -525,7 +578,7 @@ export const POS: React.FC<POSProps> = ({ vendedorId, vendedorNombre, onNav }) =
 
     const itemsText = completedSale.cartItems
       .map(item => {
-        const price = getProductPrice(item);
+        const price = Number(item.precioVendido ?? item.precio_publico ?? 0);
         const sub = price * item.qty;
         return `- ${Number(item.qty).toFixed(2)} x ${item.nombre} (${item.unidad}) - ${fmtMXN(sub)}`;
       })
@@ -593,9 +646,78 @@ ${itemsText}
     return true;
   };
 
+  // R8: navegación con flechas por la rejilla de productos.
+  const columnasRejilla = (): number => {
+    const el = gridRef.current;
+    if (!el) return 1;
+    const cols = getComputedStyle(el).gridTemplateColumns.split(' ').filter(Boolean).length;
+    return Math.max(1, cols || 1);
+  };
+
+  const enfocarProducto = (idx: number) => {
+    const max = filteredProducts.length - 1;
+    if (max < 0) return;
+    const i = Math.max(0, Math.min(idx, max));
+    (gridRef.current?.querySelector(`[data-prod-index="${i}"]`) as HTMLElement | null)?.focus();
+  };
+
+  const enfocarBuscador = () => {
+    (document.querySelector('[data-atajo="buscar-productos"]') as HTMLElement | null)?.focus();
+  };
+
+  const onRejillaKeyDown = (e: React.KeyboardEvent) => {
+    const target = e.target as HTMLElement;
+    const idx = Number(target.getAttribute('data-prod-index'));
+    if (Number.isNaN(idx)) return;
+    const cols = columnasRejilla();
+    if (e.key === 'ArrowRight') { e.preventDefault(); e.stopPropagation(); enfocarProducto(idx + 1); }
+    else if (e.key === 'ArrowLeft') { e.preventDefault(); e.stopPropagation(); enfocarProducto(idx - 1); }
+    else if (e.key === 'ArrowDown') { e.preventDefault(); e.stopPropagation(); enfocarProducto(idx + cols); }
+    else if (e.key === 'ArrowUp') {
+      e.preventDefault(); e.stopPropagation();
+      if (idx - cols < 0) enfocarBuscador(); else enfocarProducto(idx - cols);
+    }
+    else if (e.key === 'Home') { e.preventDefault(); e.stopPropagation(); enfocarProducto(0); }
+    else if (e.key === 'End') { e.preventDefault(); e.stopPropagation(); enfocarProducto(filteredProducts.length - 1); }
+    else if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault(); e.stopPropagation();
+      const p = filteredProducts[idx];
+      if (p) addToCart(p.id);
+    }
+    else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); enfocarBuscador(); }
+  };
+
+  // Saldo del cliente con interés (si ya se cargó); si no, cae al saldo_deudor (capital).
+  const saldoCliente = saldoClienteInteres ?? Number(selectedClient?.saldo_deudor ?? 0);
+
   return (
     <>
       <Topbar title="Nueva Venta" subtitle={`Vendedor: ${vendedorNombre} · Caja 1`}>
+        {/* Cotización movida al Topbar (junto al estado de caja) para liberar alto
+            en el panel de venta y agrandar la lista de productos del carrito. */}
+        <button
+          type="button"
+          data-tour="pos-cotizacion"
+          onClick={() => handleCotizacion('descargar')}
+          disabled={cartItems.length === 0}
+          className="btn btn-secondary"
+          style={{ height: 38, gap: 6, fontSize: 13, cursor: cartItems.length === 0 ? 'not-allowed' : 'pointer' }}
+          title="Generar cotización en PDF"
+        >
+          <Icon name="file" size={16} />
+          Cotización
+        </button>
+        <button
+          type="button"
+          onClick={() => handleCotizacion('imprimir')}
+          disabled={cartItems.length === 0}
+          className="btn btn-secondary"
+          style={{ height: 38, gap: 6, fontSize: 13, cursor: cartItems.length === 0 ? 'not-allowed' : 'pointer' }}
+          title="Imprimir cotización"
+        >
+          <Icon name="printer" size={16} />
+          Imprimir
+        </button>
         {(SHOW_BARCODE_FEATURES || SHOW_MOBILE_SCAN_SYNC) && (
           <>
             {SHOW_MOBILE_SCAN_SYNC && (
@@ -605,7 +727,7 @@ ${itemsText}
               </button>
             )}
             {SHOW_BARCODE_FEATURES && (
-              <button className="btn btn-secondary btn-pos-webcam" onClick={() => { setCameraError(null); setShowWebcamModal(true); }}>
+              <button data-tour="pos-escanear" className="btn btn-secondary btn-pos-webcam" onClick={() => { setCameraError(null); setShowWebcamModal(true); }}>
                 <Icon name="eye" size={16} />
                 Escanear con WebCam
               </button>
@@ -614,16 +736,40 @@ ${itemsText}
         )}
       </Topbar>
 
-      <div className="pos-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 420px', height: 'calc(100vh - 64px)', minHeight: 0 }}>
+      {/* Pestañas (solo móvil ≤900px): alternan catálogo y panel de venta. */}
+      <div className="pos-tabs" role="tablist" aria-label="Secciones de la venta">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={mobileTab === 'productos'}
+          className={mobileTab === 'productos' ? 'active' : ''}
+          onClick={() => setMobileTab('productos')}
+        >
+          <Icon name="search" size={16} />
+          Productos
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={mobileTab === 'venta'}
+          className={mobileTab === 'venta' ? 'active' : ''}
+          onClick={() => setMobileTab('venta')}
+        >
+          <Icon name="cart" size={16} />
+          Venta{cartItems.length > 0 ? ` (${cartItems.length})` : ''}
+        </button>
+      </div>
+
+      <div className="pos-grid" data-mobile-tab={mobileTab} style={{ display: 'grid', gridTemplateColumns: '1fr 560px', height: 'calc(100vh - 64px)', minHeight: 0 }}>
         {/* LEFT: Product Catalog */}
-        <div style={{ padding: '20px 24px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 16, minHeight: 0 }}>
+        <div className="pos-left" style={{ padding: '20px 24px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 16, minHeight: 0 }}>
 
           <BannerError mensaje={loadError} onReintentar={loadData} />
 
           {/* Scanner and Search row */}
           <div className="pos-search-row" style={{ display: 'grid', gridTemplateColumns: SHOW_BARCODE_FEATURES ? '1.2fr 1fr' : '1fr', gap: 12 }}>
             {SHOW_BARCODE_FEATURES && (
-              <form onSubmit={handleBarcodeSubmit} className="card" style={{ padding: 14, display: 'flex', alignItems: 'center', gap: 12, background: 'linear-gradient(180deg, var(--surface) 0%, var(--surface-2) 100%)', border: '1.5px solid var(--green-line)' }}>
+              <form onSubmit={handleBarcodeSubmit} data-tour="pos-codigo" className="card" style={{ padding: 14, display: 'flex', alignItems: 'center', gap: 12, background: 'linear-gradient(180deg, var(--surface) 0%, var(--surface-2) 100%)', border: '1.5px solid var(--green-line)' }}>
                 <div style={{ width: 44, height: 44, borderRadius: 10, background: 'var(--green-soft)', color: 'var(--green-2)', display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 'none' }}>
                   <Icon name="barcode" size={22} />
                 </div>
@@ -645,9 +791,20 @@ ${itemsText}
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 12, padding: '0 14px', height: 76 }}>
               <Icon name="search" size={18} color="var(--muted)" />
               <input
+                data-atajo="buscar-productos"
                 value={search}
                 onChange={e => setSearch(e.target.value)}
-                placeholder="Buscar por nombre o SKU..."
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    const p = filteredProducts[0];
+                    if (p) addToCart(p.id);
+                  } else if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    enfocarProducto(0);
+                  }
+                }}
+                placeholder="Buscar por nombre o SKU..." data-tour="pos-buscar"
                 style={{ flex: 1, border: 0, background: 'transparent', fontSize: 14, outline: 'none' }}
               />
               {search && <button onClick={() => setSearch('')} style={{ color: 'var(--muted)', padding: 4, background: 'transparent', border: 0, cursor: 'pointer' }}><Icon name="x" size={16} /></button>}
@@ -655,7 +812,7 @@ ${itemsText}
           </div>
 
           {/* Category pills */}
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <div data-tour="pos-categorias" style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             {categories.map(c => (
               <button
                 key={c}
@@ -677,8 +834,8 @@ ${itemsText}
           {loading ? (
             <div style={{ padding: 40, textAlign: 'center', color: 'var(--muted)' }}>Cargando catálogo...</div>
           ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 12 }}>
-              {filteredProducts.map(p => {
+            <div ref={gridRef} data-tour="pos-grid" onKeyDown={onRejillaKeyDown} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 12 }}>
+              {filteredProducts.map((p, i) => {
                 const stockVal = Number(p.stock || 0);
                 const low = stockVal < Number(p.stock_minimo);
                 const critical = stockVal < Number(p.stock_minimo) / 2;
@@ -687,6 +844,7 @@ ${itemsText}
                 return (
                   <button
                     key={p.id}
+                    data-prod-index={i}
                     onClick={() => addToCart(p.id)}
                     disabled={stockVal <= 0}
                     style={{
@@ -695,7 +853,7 @@ ${itemsText}
                       borderRadius: 12, padding: 12, textAlign: 'left',
                       display: 'flex', flexDirection: 'column', gap: 6,
                       transition: 'all 0.12s', position: 'relative',
-                      boxShadow: inCart ? '0 0 0 3px oklch(0.69 0.14 76 / 0.12)' : 'var(--shadow-sm)',
+                      boxShadow: inCart ? '0 0 0 3px oklch(0.58 0.13 145 / 0.12)' : 'var(--shadow-sm)',
                       cursor: stockVal <= 0 ? 'not-allowed' : 'pointer',
                       opacity: stockVal <= 0 ? 0.5 : 1
                     }}
@@ -711,7 +869,7 @@ ${itemsText}
                         {p.nombre.substring(0, 1).toUpperCase()}
                       </div>
                       {inCart && (
-                        <div style={{ position: 'absolute', top: 6, right: 6, width: 24, height: 24, borderRadius: 999, background: 'var(--green)', color: 'var(--ink)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700 }}>
+                        <div style={{ position: 'absolute', top: 6, right: 6, width: 24, height: 24, borderRadius: 999, background: 'var(--green)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700 }}>
                           {inCart.qty}
                         </div>
                       )}
@@ -724,7 +882,7 @@ ${itemsText}
                     
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 2 }}>
                       <div className="num" style={{ fontSize: 14, fontWeight: 700, letterSpacing: '-0.01em' }}>
-                        {fmtMXN(p.precio_publico)}
+                        {fmtMXN(getProductPrice(p))}
                       </div>
                       <span className={`badge ${critical ? 'red' : low ? 'amber' : 'gray'}`} style={{ height: 20, padding: '0 7px', fontSize: 11 }}>
                         <span className="dot"></span>
@@ -739,12 +897,15 @@ ${itemsText}
         </div>
 
         {/* RIGHT: Cart Details */}
-        <div className="pos-cart-container" style={{ background: 'var(--surface)', borderLeft: '1px solid var(--line)', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+        {/* overflowY:auto → en pantallas de poca altura (laptop chica, tablet horizontal) el
+            panel entero hace scroll en vez de aplastar la lista de productos. En móvil (≤900px)
+            la media query lo vuelve `visible` para que fluya con el scroll de la página. */}
+        <div className="pos-cart-container" style={{ background: 'var(--surface)', borderLeft: '1px solid var(--line)', display: 'flex', flexDirection: 'column', minHeight: 0, overflowY: 'auto' }}>
           
           {/* Sale Type Selector */}
           <div style={{ padding: 16, borderBottom: '1px solid var(--line)' }}>
             <div className="label">Tipo de venta</div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+            <div data-tour="pos-tipo" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
               <button onClick={() => { setTipoVenta('anonima'); setCredito(false); }} style={{
                 padding: '12px 12px', borderRadius: 8, fontWeight: 600, fontSize: 14,
                 border: `1.5px solid ${tipoVenta === 'anonima' ? 'var(--ink)' : 'var(--line)'}`,
@@ -756,7 +917,7 @@ ${itemsText}
                 <Icon name="cart" size={16} />
                 Venta Anónima
               </button>
-              <button onClick={() => setTipoVenta('cliente')} style={{
+              <button data-tour="pos-cliente" onClick={() => setTipoVenta('cliente')} style={{
                 padding: '12px 12px', borderRadius: 8, fontWeight: 600, fontSize: 14,
                 border: `1.5px solid ${tipoVenta === 'cliente' ? 'var(--green)' : 'var(--line)'}`,
                 background: tipoVenta === 'cliente' ? 'var(--green-soft)' : 'var(--surface)',
@@ -769,33 +930,18 @@ ${itemsText}
               </button>
             </div>
 
+            <div style={{ marginTop: 12 }}>
+              <div className="label">Precio aplicado</div>
+              <select data-tour="pos-precio" className="input" value={nivelPrecio}
+                onChange={e => setNivelPrecio(e.target.value as NivelPrecio)}>
+                {NIVELES_PRECIO.map(n => <option key={n.value} value={n.value}>{n.label}</option>)}
+              </select>
+            </div>
+
             {tipoVenta === 'cliente' && (
               <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 4 }}>
                 <div className="label">Cliente Seleccionado</div>
-                <select
-                  className="input"
-                  value={selectedClient?.id || ''}
-                  onChange={e => {
-                    const found = clients.find(c => c.id === e.target.value);
-                    setSelectedClient(found || null);
-                  }}
-                  style={{
-                    padding: '8px 12px',
-                    borderRadius: 8,
-                    fontSize: 13,
-                    appearance: 'none',
-                    backgroundImage: 'url("data:image/svg+xml;utf8,<svg xmlns=\'http://www.w3.org/2000/svg\' width=\'12\' height=\'12\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'%237a827e\' stroke-width=\'2\'><path d=\'m6 9 6 6 6-6\'/></svg>")',
-                    backgroundRepeat: 'no-repeat',
-                    backgroundPosition: 'right 12px center',
-                  }}
-                >
-                  <option value="" disabled>Seleccione el cliente...</option>
-                  {clients.map(cli => (
-                    <option key={cli.id} value={cli.id}>
-                      {cli.nombre} ({cli.rancho || 'Sin rancho'})
-                    </option>
-                  ))}
-                </select>
+                <ClienteCombobox value={selectedClient} onSelect={setSelectedClient} />
                 {selectedClient && (
                   <div style={{ marginTop: 8, padding: '8px 10px', background: 'var(--surface-2)', borderRadius: 6, fontSize: 11, color: 'var(--muted)', display: 'flex', flexDirection: 'column', gap: 2 }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between' }}>
@@ -803,22 +949,22 @@ ${itemsText}
                       <span className="num" style={{ fontWeight: 600 }}>{fmtMXN(selectedClient.limite_credito)}</span>
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <span>Saldo deudor actual:</span>
-                      <span className="num" style={{ fontWeight: 600, color: Number(selectedClient.saldo_deudor) > 0 ? 'var(--red)' : 'var(--muted)' }}>
-                        {fmtMXN(selectedClient.saldo_deudor)}
+                      <span>Saldo actual (con interés):</span>
+                      <span className="num" style={{ fontWeight: 600, color: saldoCliente > 0 ? 'var(--red)' : 'var(--muted)' }}>
+                        {fmtMXN(saldoCliente)}
                       </span>
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                       <span>Crédito disponible:</span>
                       <span className="num" style={{ fontWeight: 700, color: 'var(--green-2)' }}>
-                        {fmtMXN(Number(selectedClient.limite_credito) - Number(selectedClient.saldo_deudor))}
+                        {fmtMXN(Math.max(0, Number(selectedClient.limite_credito) - saldoCliente))}
                       </span>
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4, paddingTop: 4, borderTop: '1px solid var(--line-2)' }}>
                       <span>Estatus crédito:</span>
                       <span style={{
                         fontWeight: 700,
-                        color: selectedClient.activo_para_credito ? 'var(--ok)' : 'var(--red)'
+                        color: selectedClient.activo_para_credito ? 'var(--green)' : 'var(--red)'
                       }}>
                         {selectedClient.activo_para_credito ? 'ACTIVO (Apto)' : 'BLOQUEADO (Moroso)'}
                       </span>
@@ -830,7 +976,9 @@ ${itemsText}
           </div>
 
           {/* Cart Item List */}
-          <div style={{ flex: 1, overflowY: 'auto', padding: '12px 16px', minHeight: 0 }}>
+          {/* minHeight 150 reserva un alto usable para el desglose de productos: evita que el
+              panel de totales (alto) lo aplaste a una franja inservible en pantallas cortas. */}
+          <div data-tour="pos-carrito" style={{ flex: 1, overflowY: 'auto', padding: '12px 16px', minHeight: 300 }}>
             <div style={{ display: 'flex', justifySelf: 'stretch', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
               <div className="h3">Productos ({cartItems.length})</div>
               {cartItems.length > 0 && (
@@ -902,26 +1050,9 @@ ${itemsText}
             )}
           </div>
 
-          {/* Totals panel */}
-          <div style={{ borderTop: '1px solid var(--line)', padding: '14px 16px', background: 'var(--surface-2)' }}>
-            <div style={{ display: 'grid', gap: 6, marginBottom: 12, fontSize: 13 }}>
-              {iva > 0 && (
-                <>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span>Subtotal</span>
-                    <span className="num">{fmtMXN(subtotal)}</span>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span>IVA ({(tasaIvaDefault * 100).toFixed(0)}%)</span>
-                    <span className="num">{fmtMXN(iva)}</span>
-                  </div>
-                </>
-              )}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 4, paddingTop: 4 }}>
-                <span style={{ fontWeight: 700, fontSize: 16 }}>Total a Pagar</span>
-                <span className="num" style={{ fontWeight: 800, fontSize: 24, letterSpacing: '-0.02em' }}>{fmtMXN(total)}</span>
-              </div>
-            </div>
+          {/* Detalle de pago (crédito, método de pago, efectivo recibido). Scrollea con el
+              panel cuando la altura es escasa; el Total y Cobrar viven en la barra fija. */}
+          <div className="pos-cart-pay" style={{ borderTop: '1px solid var(--line)', padding: '14px 16px', background: 'var(--surface-2)' }}>
 
             {/* Credit Option Toggle */}
             {tipoVenta === 'cliente' && selectedClient && (
@@ -1011,7 +1142,7 @@ ${itemsText}
                     </div>
                     {selectedClient && (() => {
                       const limite = Number(selectedClient.limite_credito) || 0;
-                      const saldo = Number(selectedClient.saldo_deudor) || 0;
+                      const saldo = saldoCliente;
                       const proyectado = saldo + total;
                       const pct = limite > 0 ? Math.min((proyectado / limite) * 100, 100) : 0;
                       const excede = proyectado > limite;
@@ -1024,7 +1155,7 @@ ${itemsText}
                             </span>
                           </div>
                           <div style={{ height: 6, borderRadius: 999, background: 'var(--line-2)', overflow: 'hidden' }}>
-                            <div style={{ height: '100%', width: `${Math.max(2, pct)}%`, borderRadius: 999, background: excede ? 'var(--red)' : pct > 80 ? 'var(--amber)' : 'var(--ok)' }} />
+                            <div style={{ height: '100%', width: `${Math.max(2, pct)}%`, borderRadius: 999, background: excede ? 'var(--red)' : pct > 80 ? 'var(--amber)' : 'var(--green)' }} />
                           </div>
                           <div style={{ fontSize: 10, color: excede ? 'var(--red)' : 'var(--muted)' }}>
                             {excede ? `Excede el límite por ${fmtMXN(proyectado - limite)}` : `Disponible después: ${fmtMXN(limite - proyectado)}`}
@@ -1038,7 +1169,7 @@ ${itemsText}
             )}
 
             {/* Credit Limit Warnings */}
-            {tipoVenta === 'cliente' && selectedClient && credito && (Number(selectedClient.saldo_deudor) + total > Number(selectedClient.limite_credito)) && (
+            {tipoVenta === 'cliente' && selectedClient && credito && (saldoCliente + total > Number(selectedClient.limite_credito)) && (
               <div style={{ padding: '8px 12px', background: 'var(--red-soft)', color: 'var(--red)', borderRadius: 8, fontSize: 11, fontWeight: 600, marginBottom: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
                 <Icon name="alert" size={14} />
                 <span>Advertencia: La venta excede el límite de crédito disponible.</span>
@@ -1047,7 +1178,7 @@ ${itemsText}
 
             {/* Payment Method Selector (only when NOT credit) */}
             {!credito && (
-              <div style={{ marginBottom: 10 }}>
+              <div data-tour="pos-metodo" style={{ marginBottom: 10 }}>
                 <div className="label" style={{ marginBottom: 6 }}>Método de Pago</div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                   {/* EFECTIVO */}
@@ -1136,7 +1267,7 @@ ${itemsText}
 
                 {/* Efectivo recibido + montos rápidos + vuelto */}
                 {metodoPago === 'efectivo' && (
-                  <div style={{ marginTop: 8, padding: '10px 12px', background: 'var(--surface-2)', borderRadius: 8, border: '1px solid var(--line-2)', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <div data-tour="pos-efectivo" style={{ marginTop: 8, padding: '10px 12px', background: 'var(--surface-2)', borderRadius: 8, border: '1px solid var(--line-2)', display: 'flex', flexDirection: 'column', gap: 8 }}>
                     <label className="label" style={{ fontSize: 11, margin: 0 }}>Efectivo recibido (para calcular el cambio)</label>
                     <div style={{ position: 'relative' }}>
                       <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--muted)', fontWeight: 600 }}>$</span>
@@ -1162,7 +1293,7 @@ ${itemsText}
                     {montoRecibido !== '' && !isNaN(Number(montoRecibido)) && (() => {
                       const cambio = round2(Number(montoRecibido) - total);
                       return (
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontWeight: 700, color: cambio >= 0 ? 'var(--ok-2)' : 'var(--red)' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontWeight: 700, color: cambio >= 0 ? 'var(--green-2)' : 'var(--red)' }}>
                           <span>{cambio >= 0 ? 'Cambio' : 'Falta'}</span>
                           <span className="num" style={{ fontSize: 16 }}>{fmtMXN(Math.abs(cambio))}</span>
                         </div>
@@ -1213,18 +1344,32 @@ ${itemsText}
               </div>
             )}
 
+            {/* Los botones de cotización ahora viven en el Topbar (arriba), junto al
+                estado de caja, para dejar más alto a la lista del carrito. */}
+          </div>
+
+          {/* Barra de cobro: Total + acción principal. SIEMPRE visible (sticky bottom) para que
+              el botón Cobrar no quede fuera de vista en pantallas de poca altura. En 1 columna
+              (≤900px) la media query la vuelve estática y fluye al final del panel. */}
+          <div className="pos-cart-bar" style={{ position: 'sticky', bottom: 0, borderTop: '1px solid var(--line)', background: 'var(--surface-2)', padding: '12px 16px 14px', boxShadow: '0 -6px 16px rgba(0,0,0,0.06)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+              <span style={{ fontWeight: 700, fontSize: 16 }}>Total a Pagar</span>
+              <span className="num" style={{ fontWeight: 800, fontSize: 24, letterSpacing: '-0.02em' }}>{fmtMXN(total)}</span>
+            </div>
+
             {/* Action Checkout button */}
             <button
+              data-tour="pos-cobrar"
               onClick={handleCheckout}
-              disabled={loading || !isCajaAbierta || checkingCaja || cartItems.length === 0 || (tipoVenta === 'cliente' && !selectedClient) || (tipoVenta === 'cliente' && credito && (Number(selectedClient?.saldo_deudor) + total > Number(selectedClient?.limite_credito)))}
+              disabled={loading || !isCajaAbierta || checkingCaja || cartItems.length === 0 || (tipoVenta === 'cliente' && !selectedClient) || (tipoVenta === 'cliente' && credito && (saldoCliente + total > Number(selectedClient?.limite_credito))) || (!credito && metodoPago === 'efectivo' && montoRecibido !== '' && (isNaN(Number(montoRecibido)) || Number(montoRecibido) < total))}
               className="btn btn-primary btn-xl btn-block"
               style={{
-                background: !isCajaAbierta 
-                  ? 'var(--muted-2)' 
-                  : (credito 
-                      ? 'oklch(0.55 0.16 70)' 
-                      : metodoPago === 'tarjeta' 
-                        ? 'oklch(0.45 0.12 240)' 
+                background: !isCajaAbierta
+                  ? 'var(--muted-2)'
+                  : (credito
+                      ? 'oklch(0.55 0.16 70)'
+                      : metodoPago === 'tarjeta'
+                        ? 'oklch(0.45 0.12 240)'
                         : metodoPago === 'debito'
                           ? 'oklch(0.45 0.12 280)'
                           : metodoPago === 'transferencia'
@@ -1244,26 +1389,6 @@ ${itemsText}
                       ? 'Cobrar con Tarjeta Crédito'
                       : 'Cobrar en Efectivo'}
               <span className="num" style={{ marginLeft: 'auto', fontSize: 18 }}>{fmtMXN(total)}</span>
-            </button>
-
-            {/* Generar cotización (no registra venta) */}
-            <button
-              onClick={() => handleCotizacion('descargar')}
-              disabled={cartItems.length === 0}
-              className="btn btn-secondary btn-block"
-              style={{ marginTop: 8, gap: 8, cursor: cartItems.length === 0 ? 'not-allowed' : 'pointer' }}
-            >
-              <Icon name="file" size={16} />
-              Generar cotización (PDF)
-            </button>
-            <button
-              onClick={() => handleCotizacion('imprimir')}
-              disabled={cartItems.length === 0}
-              className="btn btn-secondary btn-block"
-              style={{ marginTop: 8, gap: 8, cursor: cartItems.length === 0 ? 'not-allowed' : 'pointer' }}
-            >
-              <Icon name="printer" size={16} />
-              Imprimir cotización
             </button>
           </div>
         </div>
@@ -1402,7 +1527,7 @@ ${itemsText}
           background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)',
           display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1100
         }}>
-          <div className="card" style={{ width: '90%', maxWidth: 400, padding: 24, textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16 }}>
+          <div role="dialog" aria-modal="true" className="card" style={{ width: '90%', maxWidth: 400, padding: 24, textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16 }}>
             <div style={{
               width: 56, height: 56, borderRadius: '50%',
               background: 'var(--red-soft)',
@@ -1436,13 +1561,17 @@ ${itemsText}
           folio={completedSale.folio}
           subtotal={completedSale.subtotal}
           iva={completedSale.iva}
+          ieps={completedSale.ieps}
           total={completedSale.total}
           vendedorNombre={vendedorNombre}
           clientName={completedSale.clientName}
           clientPhone={completedSale.clientPhone}
+          clientNumero={completedSale.clientNumero}
           cartItems={completedSale.cartItems}
           onSendWhatsApp={handleSendWhatsApp}
           metodoPago={completedSale.metodoPago}
+          esCredito={completedSale.metodoPago === 'credito'}
+          onImprimirPagare={handleImprimirPagare}
           efectivoRecibido={completedSale.efectivoRecibido}
           cambio={completedSale.cambio}
         />

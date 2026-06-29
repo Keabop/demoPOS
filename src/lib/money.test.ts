@@ -70,7 +70,25 @@ describe('calcularTotales', () => {
   });
 
   it('carrito vacío da ceros', () => {
-    expect(calcularTotales([])).toEqual({ subtotal: 0, iva: 0, total: 0 });
+    expect(calcularTotales([])).toEqual({ subtotal: 0, iva: 0, ieps: 0, total: 0 });
+  });
+});
+
+describe('calcularTotales con IEPS', () => {
+  it('suma IEPS por partida y al total', () => {
+    const r = calcularTotales([
+      { precioUnitario: 100, cantidad: 2, tasaIva: 0, tasaIeps: 0.06 }, // base 200, ieps 12
+      { precioUnitario: 50, cantidad: 1, tasaIva: 0, tasaIeps: 0 },     // base 50,  ieps 0
+    ]);
+    expect(r.subtotal).toBe(250);
+    expect(r.ieps).toBe(12);
+    expect(r.iva).toBe(0);
+    expect(r.total).toBe(262);
+  });
+  it('sin tasaIeps el ieps es 0 y total = subtotal', () => {
+    const r = calcularTotales([{ precioUnitario: 10, cantidad: 3, tasaIva: 0 }]);
+    expect(r.ieps).toBe(0);
+    expect(r.total).toBe(30);
   });
 });
 

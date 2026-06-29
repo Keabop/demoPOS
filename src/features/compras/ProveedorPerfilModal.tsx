@@ -3,6 +3,7 @@ import { supabase } from '../../lib/supabase';
 import { Icon } from '../../components/Icon';
 import { NumberInput } from '../../components/NumberInput';
 import { fmtMXN } from '../../lib/format';
+import { round2 } from '../../lib/money';
 import { generarSku } from '../../lib/folios';
 import type { Proveedor } from '../../types';
 
@@ -50,7 +51,9 @@ export const ProveedorPerfilModal: React.FC<ProveedorPerfilModalProps> = ({ isOp
   const [npSku, setNpSku] = useState('');
   const [npCosto, setNpCosto] = useState(0);
   const [npPublico, setNpPublico] = useState(0);
-  const [npMayoreo, setNpMayoreo] = useState(0);
+  const [npCredito, setNpCredito] = useState(0);
+  const [npSubdistribuidor, setNpSubdistribuidor] = useState(0);
+  const [npIeps, setNpIeps] = useState(0);
 
   const load = useCallback(async () => {
     if (!proveedor) return;
@@ -100,7 +103,7 @@ export const ProveedorPerfilModal: React.FC<ProveedorPerfilModalProps> = ({ isOp
   const limpiarFormularios = () => {
     setLinkProductoId(''); setLinkPrecio(0);
     setNpNombre(''); setNpCategoria(''); setNpUnidad(''); setNpSku('');
-    setNpCosto(0); setNpPublico(0); setNpMayoreo(0);
+    setNpCosto(0); setNpPublico(0); setNpCredito(0); setNpSubdistribuidor(0); setNpIeps(0);
     setAddError(null);
   };
 
@@ -138,8 +141,9 @@ export const ProveedorPerfilModal: React.FC<ProveedorPerfilModalProps> = ({ isOp
         unidad: npUnidad.trim(),
         costo: npCosto || 0,
         precio_publico: npPublico,
-        precio_mayoreo: npMayoreo || npPublico,
-        tasa_iva: 0,
+        precio_credito: npCredito || npPublico,
+        precio_subdistribuidor: npSubdistribuidor || npPublico,
+        tasa_ieps: round2(Number(npIeps) / 100),
       }).select('id').single();
       if (e1) throw e1;
       const { error: e2 } = await supabase.from('proveedor_productos').insert({
@@ -265,8 +269,12 @@ export const ProveedorPerfilModal: React.FC<ProveedorPerfilModalProps> = ({ isOp
                   <NumberInput className="input num" value={npCosto} onChange={(n) => setNpCosto(n)} disabled={busy} /></div>
                 <div className="pp-field"><span className="pp-mini-label">Precio público *</span>
                   <NumberInput className="input num" value={npPublico} onChange={(n) => setNpPublico(n)} disabled={busy} /></div>
-                <div className="pp-field"><span className="pp-mini-label">Precio mayoreo (opcional)</span>
-                  <NumberInput className="input num" value={npMayoreo} onChange={(n) => setNpMayoreo(n)} disabled={busy} placeholder="Igual al público si lo dejas en 0" /></div>
+                <div className="pp-field"><span className="pp-mini-label">Precio crédito</span>
+                  <NumberInput className="input num" value={npCredito} onChange={(n) => setNpCredito(n)} disabled={busy} placeholder="Igual al público si lo dejas en 0" /></div>
+                <div className="pp-field"><span className="pp-mini-label">Precio subdistribuidor</span>
+                  <NumberInput className="input num" value={npSubdistribuidor} onChange={(n) => setNpSubdistribuidor(n)} disabled={busy} placeholder="Igual al público si lo dejas en 0" /></div>
+                <div className="pp-field"><span className="pp-mini-label">IEPS (%)</span>
+                  <NumberInput className="input num" value={npIeps} onChange={(n) => setNpIeps(n)} disabled={busy} /></div>
               </div>
               <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
                 <button type="button" className="btn btn-secondary" style={{ height: 34, fontSize: 13 }} onClick={() => setAddMode('none')} disabled={busy}>Cancelar</button>

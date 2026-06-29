@@ -1,5 +1,6 @@
 import type jsPDF from 'jspdf';
 import { getConfig } from '../configNegocio';
+import { imprimirDocumentoPDF } from '../printing/qz';
 
 export const VERDE: [number, number, number] = [57, 145, 102];
 
@@ -13,75 +14,68 @@ export type ModoEntrega = 'descargar' | 'imprimir';
  */
 export function entregarPDF(doc: jsPDF, nombre: string, modo: ModoEntrega = 'descargar'): void {
   if (modo === 'imprimir') {
-    const url = doc.output('bloburl') as unknown as string;
-    const win = window.open(url, '_blank');
-    if (win) {
-      win.addEventListener('load', () => {
-        win.focus();
-        win.print();
-      });
-      return;
-    }
-    // Popup bloqueado: degradar a descarga.
+    // 1) Si hay impresora de documentos configurada y QZ Tray disponible, imprime
+    //    directo a ESA impresora (sin diálogo). 2) Si no, abre el PDF y lanza el
+    //    diálogo del navegador. 3) Si el popup se bloquea, descarga.
+    void (async () => {
+      try {
+        const base64 = (doc.output('datauristring') as string).split(',')[1] ?? '';
+        if (base64 && (await imprimirDocumentoPDF(base64))) return;
+      } catch {
+        /* cae al respaldo del navegador */
+      }
+      const url = doc.output('bloburl') as unknown as string;
+      const win = window.open(url, '_blank');
+      if (win) {
+        win.addEventListener('load', () => {
+          win.focus();
+          win.print();
+        });
+        return;
+      }
+      doc.save(nombre); // popup bloqueado
+    })();
+    return;
   }
   doc.save(nombre);
 }
 
-/** Carga el logo de la config como dataURL PNG; devuelve null si no está disponible. */
+/** Carga el logo configurado como dataURL; devuelve null si no hay logo o no está disponible. */
 export async function cargarLogo(): Promise<string | null> {
+  const url = getConfig().logoUrl;
+  if (!url) return null;
   try {
-    const resp = await fetch(getConfig().logoUrl);
+    const resp = await fetch(url);
     if (!resp.ok) return null;
     const blob = await resp.blob();
-    const dataUrl = await blobADataUrl(blob);
-    if (!dataUrl) return null;
-    // jsPDF.addImage solo entiende raster (PNG/JPEG). Si el logo es SVG (o cualquier
-    // vector), lo rasterizamos a PNG con un canvas antes de incrustarlo en el PDF.
-    if (blob.type.includes('svg') || dataUrl.startsWith('data:image/svg')) {
-      return await rasterizarPng(dataUrl);
-    }
-    return dataUrl;
+    return await new Promise<string | null>((resolve) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(typeof reader.result === 'string' ? reader.result : null);
+      reader.onerror = () => resolve(null);
+      reader.readAsDataURL(blob);
+    });
   } catch {
     return null;
   }
 }
 
-function blobADataUrl(blob: Blob): Promise<string | null> {
-  return new Promise((resolve) => {
-    const reader = new FileReader();
-    reader.onloadend = () => resolve(typeof reader.result === 'string' ? reader.result : null);
-    reader.onerror = () => resolve(null);
-    reader.readAsDataURL(blob);
-  });
-}
-
-function rasterizarPng(svgDataUrl: string): Promise<string | null> {
-  return new Promise((resolve) => {
-    const img = new Image();
-    img.onload = () => {
-      const escala = 4; // nitidez en el PDF
-      const w = (img.naturalWidth || 96) * escala;
-      const h = (img.naturalHeight || 96) * escala;
-      const canvas = document.createElement('canvas');
-      canvas.width = w; canvas.height = h;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) { resolve(null); return; }
-      ctx.drawImage(img, 0, 0, w, h);
-      try { resolve(canvas.toDataURL('image/png')); } catch { resolve(null); }
-    };
-    img.onerror = () => resolve(null);
-    img.src = svgDataUrl;
-  });
-}
-
 /**
- * Dibuja el logo (o, si no está disponible, el nombre del negocio) alineado a la derecha
- * dentro del rectángulo (x, y, w, h).
+ * Dibuja el logo (o, si no está disponible, el nombre del negocio en texto) alineado a la
+ * derecha dentro del rectángulo (x, y, w, h).
  */
 export function dibujarLogo(doc: jsPDF, logo: string | null, x: number, y: number, w = 120, h = 48): void {
   if (logo) {
     try {
-      doc.addImage(logo, 'PNG', x, y, w, h);
+      // Escala conservando la proporción NATURAL del logo dentro de la caja (x,y,w,h)
+      // para que no salga estirado/alargado. Se ancla a la derecha de la caja.
+      const props = doc.getImageProperties(logo);
+      const ratio = props.width && props.height ? props.width / props.height : w / h;
+      let dw = w;
+      let dh = w / ratio;
+      if (dh > h) { dh = h; dw = h * ratio; }
+      const dx = x + (w - dw); // alineado a la derecha de la caja
+      const dy = y + (h - dh) / 2; // centrado vertical
+      doc.addImage(logo, 'PNG', dx, dy, dw, dh);
       return;
     } catch {
       /* fallback al texto */

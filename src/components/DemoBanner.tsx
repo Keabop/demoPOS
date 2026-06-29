@@ -41,6 +41,23 @@ export const DemoBanner = () => {
       <span>● DEMO interactiva — datos de ejemplo en tu navegador</span>
       <button
         type="button"
+        onClick={() => window.dispatchEvent(new Event('demo:start-tour'))}
+        style={{
+          background: 'oklch(0.69 0.14 76)',
+          color: '#1a140a',
+          border: 0,
+          borderRadius: 4,
+          padding: '1px 9px',
+          fontSize: 11,
+          lineHeight: 1.4,
+          fontWeight: 700,
+          cursor: 'pointer',
+        }}
+      >
+        ▶ Ver tutorial
+      </button>
+      <button
+        type="button"
         onClick={handleReset}
         disabled={busy}
         style={{

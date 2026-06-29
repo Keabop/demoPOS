@@ -8,17 +8,21 @@ import { emitChange } from './realtime';
 
 type Op = '=' | '<>' | '>' | '>=' | '<' | '<=' | 'LIKE' | 'ILIKE' | 'IS';
 interface Filter { col: string; op: Op; val: unknown; isIn?: boolean; }
+// Operadores PostgREST usados dentro de .or('col.op.val,col2.op.val')
+const OR_OPS: Record<string, string> = { eq: '=', neq: '<>', gt: '>', gte: '>=', lt: '<', lte: '<=', like: 'LIKE', ilike: 'ILIKE', is: 'IS' };
 
 class QueryBuilder<T = any[]> implements PromiseLike<PostgrestResult<T>> {
   private _select = '*';
   private _filters: Filter[] = [];
   private _order = '';
   private _limit = '';
+  private _range = '';
   private _action: 'select' | 'insert' | 'update' | 'delete' = 'select';
   private _payload: unknown = null;
   private _returning = false;
   private _single: false | 'one' | 'maybe' = false;
   private _count: false | 'exact' = false;
+  private _orGroups: string[] = [];
   private _head = false;
   private table: string;
 
@@ -45,6 +49,8 @@ class QueryBuilder<T = any[]> implements PromiseLike<PostgrestResult<T>> {
   ilike(c: string, v: string) { this._filters.push({ col: c, op: 'ILIKE', val: v }); return this; }
   is(c: string, v: unknown) { this._filters.push({ col: c, op: 'IS', val: v }); return this; }
   in(c: string, arr: unknown[]) { this._filters.push({ col: c, op: '=', val: arr, isIn: true }); return this; }
+  // PostgREST .or('col.op.val,col2.op.val') → grupo (… OR …), unido con AND al resto.
+  or(filterStr: string) { this._orGroups.push(filterStr); return this; }
 
   order(col: string, opts?: { ascending?: boolean }) {
     const dir = opts?.ascending === false ? 'DESC' : 'ASC';
@@ -52,12 +58,13 @@ class QueryBuilder<T = any[]> implements PromiseLike<PostgrestResult<T>> {
     return this;
   }
   limit(n: number) { this._limit = `LIMIT ${n}`; return this; }
+  // PostgREST .range(from,to) inclusivo → OFFSET/LIMIT. Lo usa fetchAll.ts (paginación).
+  range(from: number, to: number) { this._range = `OFFSET ${Math.max(0, from)} LIMIT ${Math.max(0, to - from + 1)}`; return this; }
   // single()/maybeSingle() devuelven un objeto (no arreglo): resuelven a data: any.
   single() { this._single = 'one'; return this as unknown as QueryBuilder<any>; }
   maybeSingle() { this._single = 'maybe'; return this as unknown as QueryBuilder<any>; }
 
   private whereSql(forBase: boolean): string {
-    if (!this._filters.length) return '';
     const pre = forBase ? 'b.' : '';
     const conds = this._filters.map((f) => {
       if (f.isIn) {
@@ -67,6 +74,15 @@ class QueryBuilder<T = any[]> implements PromiseLike<PostgrestResult<T>> {
       if (f.op === 'IS') return `${pre}${f.col} IS ${f.val === null ? 'NULL' : lit(f.val)}`;
       return `${pre}${f.col} ${f.op} ${lit(f.val)}`;
     });
+    for (const g of this._orGroups) {
+      const ors = g.split(',').map((c) => {
+        const i1 = c.indexOf('.'); const i2 = c.indexOf('.', i1 + 1);
+        const col = c.slice(0, i1), op = c.slice(i1 + 1, i2), val = c.slice(i2 + 1);
+        return `${pre}${col} ${OR_OPS[op] ?? '='} ${lit(val)}`;
+      });
+      if (ors.length) conds.push(`(${ors.join(' OR ')})`);
+    }
+    if (!conds.length) return '';
     return 'WHERE ' + conds.join(' AND ');
   }
 
@@ -80,7 +96,7 @@ class QueryBuilder<T = any[]> implements PromiseLike<PostgrestResult<T>> {
             `SELECT count(*)::int AS c FROM ${this.table} b ${this.whereSql(true)}`);
           return { data: [] as unknown as T, error: null, count: r.rows[0].c };
         }
-        sql = buildSelectSql(this.table, this._select, this.whereSql(true), `${this._order} ${this._limit}`);
+        sql = buildSelectSql(this.table, this._select, this.whereSql(true), `${this._order} ${this._range || this._limit}`);
       } else if (this._action === 'insert') {
         const rows = Array.isArray(this._payload) ? this._payload : [this._payload];
         const cols = Object.keys(rows[0] as object);
@@ -114,7 +130,14 @@ class QueryBuilder<T = any[]> implements PromiseLike<PostgrestResult<T>> {
         }
         return { data: rows[0] as T, error: null, count: null };
       }
-      return { data: rows as T, error: null, count: this._count ? rows.length : null };
+      // count:'exact' → total real (COUNT(*) sin paginar), no el tamaño de la página.
+      let exactCount: number | null = null;
+      if (this._count === 'exact' && this._action === 'select') {
+        const rc = await db.query<{ c: number }>(
+          `SELECT count(*)::int AS c FROM ${this.table} b ${this.whereSql(true)}`);
+        exactCount = rc.rows[0].c;
+      }
+      return { data: rows as T, error: null, count: exactCount };
     } catch (e) {
       return { data: null, error: { message: e instanceof Error ? e.message : String(e) }, count: null };
     }

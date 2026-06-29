@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../../lib/supabase';
 import { Icon } from '../../components/Icon';
 import { fmtMXN } from '../../lib/format';
-import { calcularTotalesOrden, subtotalPartida, generarFolioOC } from '../../lib/compras';
+import { calcularTotalesOrden, subtotalPartida } from '../../lib/compras';
 import { NumberInput } from '../../components/NumberInput';
 import type { Proveedor } from '../../types';
 
@@ -119,32 +119,23 @@ export const NuevaOrdenModal: React.FC<NuevaOrdenModalProps> = ({ isOpen, vended
 
     setLoading(true);
     try {
-      // Crear la cabecera (reintenta una vez si el folio choca).
-      let ordenId: string | null = null;
-      for (let intento = 0; intento < 2 && !ordenId; intento++) {
-        const folio = generarFolioOC(new Date());
-        const { data, error } = await supabase
-          .from('ordenes_compra')
-          .insert({
-            folio,
-            proveedor_id: proveedorId,
-            estado: 'borrador',
-            tasa_iva: tasaIva,
-            subtotal: totales.subtotal,
-            iva: totales.iva,
-            total: totales.total,
-            instrucciones: instrucciones.trim() || null,
-            creado_por: vendedorId,
-          })
-          .select('id')
-          .single();
-        if (error) {
-          if (intento === 1) throw new Error(error.message);
-          continue;
-        }
-        ordenId = data.id;
-      }
-      if (!ordenId) throw new Error('No se pudo generar el folio de la orden.');
+      // Crear la cabecera; el folio lo asigna la BD (secuencia seq_folio_orden).
+      const { data: cab, error: cabError } = await supabase
+        .from('ordenes_compra')
+        .insert({
+          proveedor_id: proveedorId,
+          estado: 'borrador',
+          tasa_iva: tasaIva,
+          subtotal: totales.subtotal,
+          iva: totales.iva,
+          total: totales.total,
+          instrucciones: instrucciones.trim() || null,
+          creado_por: vendedorId,
+        })
+        .select('id, folio')
+        .single();
+      if (cabError) throw new Error(cabError.message);
+      const ordenId = cab.id;
 
       const detalles = validas.map((p) => ({
         orden_id: ordenId,

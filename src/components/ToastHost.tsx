@@ -3,7 +3,7 @@ import { subscribeToasts, dismissToast, type ToastItem, type ToastTipo } from '.
 import { Icon } from './Icon';
 
 const ESTILO: Record<ToastTipo, { bg: string; fg: string; icon: string }> = {
-  success: { bg: 'var(--ok-soft)', fg: 'var(--ok-2)', icon: 'check' },
+  success: { bg: 'var(--green-soft)', fg: 'var(--green-2)', icon: 'check' },
   error: { bg: 'var(--red-soft)', fg: 'var(--red)', icon: 'alert' },
   info: { bg: 'var(--surface-2)', fg: 'var(--ink-2)', icon: 'clock' },
 };

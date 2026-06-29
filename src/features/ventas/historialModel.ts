@@ -101,6 +101,7 @@ export const ETIQUETA_ESTADO: Record<string, string> = {
   cobrada: 'Cobrada',
   pendiente: 'Pendiente',
   cancelada: 'Cancelada',
+  devuelta: 'Devuelta',
 };
 
 export function nombreCliente(v: VentaHistorial): string {

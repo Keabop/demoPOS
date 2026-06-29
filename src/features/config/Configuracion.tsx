@@ -1,9 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 import { Topbar } from '../../components/Topbar';
 import { Icon } from '../../components/Icon';
+import { LogoNegocio } from '../../components/LogoNegocio';
 import { toast } from '../../lib/toast';
 import { useConfig } from './ConfigContext';
+import { listarImpresoras } from '../../lib/printing/qz';
 
 /** Pantalla de Ajustes (solo admin): edita los datos de empresa de la tabla `configuracion`. */
 export const Configuracion: React.FC = () => {
@@ -23,11 +25,24 @@ export const Configuracion: React.FC = () => {
     moneda_simbolo: config.monedaSimbolo,
     moneda_iso: config.monedaIso,
     locale: config.locale,
+    impresora_tickets: config.impresoraTickets,
+    impresora_documentos: config.impresoraDocumentos,
+    ancho_ticket: config.anchoTicket,
   });
   const [saving, setSaving] = useState(false);
   const [subiendoLogo, setSubiendoLogo] = useState(false);
+  const [impresoras, setImpresoras] = useState<string[]>([]);
+  const [qzMsg, setQzMsg] = useState('Conectando con QZ Tray…');
 
-  const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
+  const cargarImpresoras = async () => {
+    setQzMsg('Conectando con QZ Tray…');
+    const list = await listarImpresoras();
+    setImpresoras(list);
+    setQzMsg(list.length ? '' : 'QZ Tray no detectado. Instálalo/ábrelo en esta PC para elegir impresoras (sin él, se usa el diálogo del navegador).');
+  };
+  useEffect(() => { void cargarImpresoras(); }, []);
+
+  const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) =>
     setForm((f) => ({ ...f, [k]: e.target.value }));
 
   const subirLogo = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -90,7 +105,7 @@ export const Configuracion: React.FC = () => {
   return (
     <>
       <Topbar title="Configuración" subtitle="Datos de la empresa y del sistema" />
-      <div className="content" style={{ display: 'flex', flexDirection: 'column', gap: 20, maxWidth: 820 }}>
+      <div className="content" style={{ display: 'flex', flexDirection: 'column', gap: 20, maxWidth: 820, margin: '0 auto', width: '100%' }}>
         <form onSubmit={guardar} className="card" style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 16 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, borderBottom: '1px solid var(--line)', paddingBottom: 12 }}>
             <Icon name="settings" size={20} color="var(--green-2)" />
@@ -123,9 +138,7 @@ export const Configuracion: React.FC = () => {
             <div className="label">Logo</div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
               <div style={{ width: 64, height: 64, borderRadius: 10, border: '1px solid var(--line)', background: 'var(--surface-2)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flex: 'none' }}>
-                {form.logo_url
-                  ? <img src={form.logo_url} alt="Logo" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
-                  : <span style={{ fontSize: 10, color: 'var(--muted)' }}>Sin logo</span>}
+                <LogoNegocio logoUrl={form.logo_url} nombre={form.razon_social || config.nombre} fontSize={22} radius={9} />
               </div>
               <label className="btn btn-secondary" style={{ cursor: subiendoLogo ? 'wait' : 'pointer' }}>
                 <Icon name="plus" size={16} />
@@ -145,6 +158,45 @@ export const Configuracion: React.FC = () => {
             {campo('Símbolo moneda', 'moneda_simbolo')}
             {campo('ISO moneda', 'moneda_iso')}
             {campo('Locale', 'locale')}
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, borderTop: '1px solid var(--line)', paddingTop: 12 }}>
+            <Icon name="printer" size={18} color="var(--green-2)" />
+            <div className="h3" style={{ margin: 0 }}>Impresión (QZ Tray)</div>
+          </div>
+
+          {impresoras.length === 0 ? (
+            <div style={{ fontSize: 12, color: 'var(--muted)', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+              <span>{qzMsg}</span>
+              <button type="button" className="btn btn-secondary" style={{ height: 30, padding: '0 12px', fontSize: 12 }} onClick={cargarImpresoras}>
+                Reintentar conexión
+              </button>
+            </div>
+          ) : (
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+              <div>
+                <div className="label">Impresora de tickets</div>
+                <select className="input" value={form.impresora_tickets} onChange={set('impresora_tickets')}>
+                  <option value="">(usar diálogo del navegador)</option>
+                  {impresoras.map((p) => <option key={p} value={p}>{p}</option>)}
+                </select>
+              </div>
+              <div>
+                <div className="label">Impresora de documentos (PDF)</div>
+                <select className="input" value={form.impresora_documentos} onChange={set('impresora_documentos')}>
+                  <option value="">(usar diálogo del navegador)</option>
+                  {impresoras.map((p) => <option key={p} value={p}>{p}</option>)}
+                </select>
+              </div>
+            </div>
+          )}
+          <div style={{ maxWidth: 240 }}>
+            <div className="label">Ancho de ticket</div>
+            <select className="input" value={String(form.ancho_ticket)}
+              onChange={(e) => setForm((f) => ({ ...f, ancho_ticket: Number(e.target.value) }))}>
+              <option value="58">58 mm</option>
+              <option value="80">80 mm</option>
+            </select>
           </div>
 
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, borderTop: '1px solid var(--line)', paddingTop: 14 }}>

@@ -1,11 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import { PGlite } from '@electric-sql/pglite';
-import { DEMO_SCHEMA_SQL } from './schema';
+import { FULL_SCHEMA_SQL } from './schema_all';
 
 describe('DEMO_SCHEMA_SQL', () => {
   it('carga en PGlite sin error y crea las tablas/funciones clave', async () => {
     const db = new PGlite(); // en memoria (node)
-    await db.exec(DEMO_SCHEMA_SQL);
+    await db.exec(FULL_SCHEMA_SQL);
     const t = await db.query<{ c: number }>(
       `select count(*)::int as c from information_schema.tables where table_schema='public'`);
     expect(t.rows[0].c).toBeGreaterThanOrEqual(14);
@@ -17,12 +17,13 @@ describe('DEMO_SCHEMA_SQL', () => {
     // los 4 triggers existen:
     const trg = await db.query<{ c: number }>(
       `select count(*)::int as c from pg_trigger where tgname like 'trg_%'`);
-    expect(trg.rows[0].c).toBe(4);
+    // 4 base + materialización de crédito/abonado + 17 trg_audit de bitácora.
+    expect(trg.rows[0].c).toBeGreaterThanOrEqual(20);
   });
 
   it('un alta de inventario tipo entrada dispara el trigger y crea lote + stock', async () => {
     const db = new PGlite();
-    await db.exec(DEMO_SCHEMA_SQL);
+    await db.exec(FULL_SCHEMA_SQL);
     await db.exec(`
       INSERT INTO productos(id,sku,nombre,categoria,unidad,precio_publico,precio_mayoreo,costo,stock)
         VALUES ('00000000-0000-0000-0000-0000000000d1','S1','Urea','Fert','bulto',520,500,460,0);

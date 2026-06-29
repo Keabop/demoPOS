@@ -10,6 +10,6 @@ export const DATOS_NEGOCIO = {
   rfc: 'AURM-640315-V77',
   direccion: 'Av. San José de Jorge López No. 1691, San José de Jorge López, Irapuato, Gto.',
   cp: '36648',
-  telPagare: '01-(462)-62-2-00-39',
+  telPagare: '(462)-62-2-00-39',
   ciudad: 'Irapuato, Guanajuato',
 } as const;

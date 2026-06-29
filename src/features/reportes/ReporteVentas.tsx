@@ -1,27 +1,18 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useId } from 'react';
 import { supabase } from '../../lib/supabase';
-import type { Venta, DetalleVenta, Producto } from '../../types';
 import { Icon } from '../../components/Icon';
 import { fmtMXN } from '../../lib/format';
+import type { ReporteVentasData, ReporteVentasKpis } from '../../types';
 
 interface ReportProps {
   startDate: Date;
   endDate: Date;
 }
 
-interface DetalleConProducto extends DetalleVenta {
-  productos: Producto | null;
-}
-interface VentaConDetalles extends Venta {
-  ventas_detalles: DetalleConProducto[];
-}
-
-const SELECT = `*, ventas_detalles ( *, productos ( * ) )`;
-
 // Tonos verdes de la marca (dona y barras de categoría)
 const GREEN_SHADES = [
-  'oklch(0.55 0.14 76)', 'oklch(0.62 0.14 77)', 'oklch(0.68 0.13 78)',
-  'oklch(0.74 0.11 80)', 'oklch(0.80 0.09 82)', 'oklch(0.86 0.07 84)',
+  'oklch(0.50 0.13 145)', 'oklch(0.58 0.13 145)', 'oklch(0.64 0.12 145)',
+  'oklch(0.70 0.10 145)', 'oklch(0.77 0.08 145)', 'oklch(0.84 0.06 145)',
 ];
 const AVATARS = [
   { bg: 'var(--green-soft)', color: 'var(--green-2)' },
@@ -35,65 +26,7 @@ const formatK = (v: number) => (v >= 1_000_000 ? `${(v / 1e6).toFixed(1)}M` : v 
 const initialsOf = (name: string) =>
   name.trim().split(/\s+/).slice(0, 2).map(w => w[0]?.toUpperCase() ?? '').join('') || '—';
 
-interface Metrics { total: number; count: number; ticket: number; productos: number; credito: number; clientes: number; }
-function calcMetrics(sales: VentaConDetalles[]): Metrics {
-  let total = 0, productos = 0, credito = 0;
-  const clientes = new Set<string>();
-  for (const s of sales) {
-    total += Number(s.total || 0);
-    if (s.tipo_pago === 'credito') credito += Number(s.total || 0);
-    if (s.cliente_id) clientes.add(s.cliente_id);
-    for (const d of s.ventas_detalles || []) productos += Number(d.cantidad || 0);
-  }
-  const count = sales.length;
-  return { total, count, ticket: count ? total / count : 0, productos, credito, clientes: clientes.size };
-}
-
-interface Bucket { label: string; total: number; count: number; productos: number; credito: number; clientes: number; }
-interface BucketAcc extends Omit<Bucket, 'clientes'> { clientes: Set<string> }
-function addToBucket(b: BucketAcc, s: VentaConDetalles) {
-  b.total += Number(s.total || 0);
-  b.count += 1;
-  if (s.tipo_pago === 'credito') b.credito += Number(s.total || 0);
-  if (s.cliente_id) b.clientes.add(s.cliente_id);
-  for (const d of s.ventas_detalles || []) b.productos += Number(d.cantidad || 0);
-}
-const dayKey = (d: Date) => `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
-
-function buildBuckets(sales: VentaConDetalles[], start: Date, end: Date): Bucket[] {
-  const accs: BucketAcc[] = [];
-  const span = end.getTime() - start.getTime();
-  const mk = (label: string): BucketAcc => ({ label, total: 0, count: 0, productos: 0, credito: 0, clientes: new Set() });
-
-  if (span <= 86_400_000 + 1000) {
-    // Un solo día → franjas de 2 horas
-    const hours = [6, 8, 10, 12, 14, 16, 18, 20, 22];
-    hours.forEach(h => accs.push(mk(`${String(h).padStart(2, '0')}:00`)));
-    for (const s of sales) {
-      if (!s.fecha) continue;
-      const hr = new Date(s.fecha).getHours();
-      let i = 0;
-      for (let k = hours.length - 1; k >= 0; k--) { if (hr >= hours[k]) { i = k; break; } }
-      addToBucket(accs[i], s);
-    }
-  } else {
-    // Por día
-    const map = new Map<string, BucketAcc>();
-    const cur = new Date(start); cur.setHours(0, 0, 0, 0);
-    const last = new Date(end); last.setHours(0, 0, 0, 0);
-    while (cur <= last) {
-      const b = mk(`${String(cur.getDate()).padStart(2, '0')}/${String(cur.getMonth() + 1).padStart(2, '0')}`);
-      accs.push(b); map.set(dayKey(cur), b);
-      cur.setDate(cur.getDate() + 1);
-    }
-    for (const s of sales) {
-      if (!s.fecha) continue;
-      const b = map.get(dayKey(new Date(s.fecha)));
-      if (b) addToBucket(b, s);
-    }
-  }
-  return accs.map(b => ({ label: b.label, total: b.total, count: b.count, productos: b.productos, credito: b.credito, clientes: b.clientes.size }));
-}
+const EMPTY_KPIS: ReporteVentasKpis = { total: 0, count: 0, ticket: 0, productos: 0, credito: 0, clientes: 0 };
 
 // Mini-gráfica (sparkline) 120x26
 function sparkPath(vals: number[]): { area: string; line: string } {
@@ -118,9 +51,8 @@ interface KpiProps {
   label: string; value: string; icon: string; iconBg: string; iconColor: string;
   spark: number[]; variation: Variation | null; valueColor?: string;
 }
-const idCounter = { n: 0 };
 const KpiCard: React.FC<KpiProps> = ({ label, value, icon, iconBg, iconColor, spark, variation: v, valueColor }) => {
-  const gid = useMemo(() => `spk-${idCounter.n++}`, []);
+  const gid = `spk-${useId().replace(/:/g, '')}`;
   const sp = sparkPath(spark);
   return (
     <div className="card ag-rise" style={{ padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -145,7 +77,7 @@ const KpiCard: React.FC<KpiProps> = ({ label, value, icon, iconBg, iconColor, sp
           </svg>
         )}
         {v && (
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, fontWeight: 700, color: v.up ? 'var(--ok-2)' : 'var(--red)' }}>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, fontWeight: 700, color: v.up ? 'var(--green-2)' : 'var(--red)' }}>
             <Icon name={v.up ? 'arrow-up' : 'arrow-down'} size={13} />
             <span className="num">{v.up ? '+' : '-'}{v.pct.toFixed(1)}%</span>
             <span style={{ color: 'var(--muted)', fontWeight: 500 }}>vs anterior</span>
@@ -171,9 +103,7 @@ const BarRow: React.FC<{ label: string; value: string; pct: number; color: strin
 const cardHead: React.CSSProperties = { display: 'flex', alignItems: 'center', justifyContent: 'space-between' };
 
 export const ReporteVentas: React.FC<ReportProps> = ({ startDate, endDate }) => {
-  const [sales, setSales] = useState<VentaConDetalles[]>([]);
-  const [prevSales, setPrevSales] = useState<VentaConDetalles[]>([]);
-  const [perfilMap, setPerfilMap] = useState<Record<string, string>>({});
+  const [data, setData] = useState<ReporteVentasData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -182,22 +112,15 @@ export const ReporteVentas: React.FC<ReportProps> = ({ startDate, endDate }) => 
     (async () => {
       setLoading(true); setError(null);
       try {
-        const durationMs = endDate.getTime() - startDate.getTime();
-        const prevStart = new Date(startDate.getTime() - durationMs);
-        const prevEnd = new Date(startDate.getTime() - 1);
-
-        const [cur, prev, perfiles] = await Promise.all([
-          supabase.from('ventas').select(SELECT).gte('fecha', startDate.toISOString()).lte('fecha', endDate.toISOString()).neq('estado', 'cancelada').order('fecha', { ascending: true }),
-          supabase.from('ventas').select(SELECT).gte('fecha', prevStart.toISOString()).lte('fecha', prevEnd.toISOString()).neq('estado', 'cancelada'),
-          supabase.from('perfiles').select('id, nombre'),
-        ]);
-        if (cur.error) throw cur.error;
+        // Toda la agregación se hace en Postgres (fn_reporte_ventas): KPIs, serie,
+        // métodos de pago, top productos, por categoría y por vendedor — ya calculados.
+        const { data: rpc, error: rpcError } = await supabase.rpc('fn_reporte_ventas', {
+          p_start: startDate.toISOString(),
+          p_end: endDate.toISOString(),
+        });
+        if (rpcError) throw rpcError;
         if (!active) return;
-        setSales((cur.data as VentaConDetalles[]) || []);
-        setPrevSales((prev.data as VentaConDetalles[]) || []);
-        const pm: Record<string, string> = {};
-        for (const p of (perfiles.data as { id: string; nombre: string }[] | null) || []) pm[p.id] = p.nombre;
-        setPerfilMap(pm);
+        setData(rpc as ReporteVentasData);
       } catch (err) {
         if (active) setError(err instanceof Error ? err.message : 'Error al cargar los datos de ventas.');
       } finally {
@@ -207,36 +130,36 @@ export const ReporteVentas: React.FC<ReportProps> = ({ startDate, endDate }) => 
     return () => { active = false; };
   }, [startDate, endDate]);
 
-  const m = useMemo(() => calcMetrics(sales), [sales]);
-  const pm = useMemo(() => calcMetrics(prevSales), [prevSales]);
-  const buckets = useMemo(() => buildBuckets(sales, startDate, endDate), [sales, startDate, endDate]);
+  const m = data?.kpis ?? EMPTY_KPIS;
+  const pm = data?.kpis_prev ?? EMPTY_KPIS;
+  const serie = useMemo(() => data?.serie ?? [], [data]);
 
   const kpis: KpiProps[] = [
-    { label: 'Ventas totales', value: fmtMXN(m.total), icon: 'sack', iconBg: 'var(--green-soft)', iconColor: 'var(--green-2)', spark: buckets.map(b => b.total), variation: variation(m.total, pm.total) },
-    { label: 'Transacciones', value: fmtNum(m.count), icon: 'cart', iconBg: 'var(--blue-soft)', iconColor: 'var(--blue)', spark: buckets.map(b => b.count), variation: variation(m.count, pm.count) },
-    { label: 'Ticket promedio', value: fmtMXN(m.ticket), icon: 'report', iconBg: 'var(--green-soft)', iconColor: 'var(--green-2)', spark: buckets.map(b => (b.count ? b.total / b.count : 0)), variation: variation(m.ticket, pm.ticket) },
-    { label: 'Productos vendidos', value: fmtNum(m.productos), icon: 'package', iconBg: 'var(--line-2)', iconColor: 'var(--ink-2)', spark: buckets.map(b => b.productos), variation: variation(m.productos, pm.productos) },
-    { label: 'Ventas a crédito', value: fmtMXN(m.credito), icon: 'credit', iconBg: 'var(--amber-soft)', iconColor: 'var(--amber)', spark: buckets.map(b => b.credito), variation: variation(m.credito, pm.credito) },
-    { label: 'Clientes atendidos', value: fmtNum(m.clientes), icon: 'users', iconBg: 'var(--blue-soft)', iconColor: 'var(--blue)', spark: buckets.map(b => b.clientes), variation: variation(m.clientes, pm.clientes) },
+    { label: 'Ventas totales', value: fmtMXN(m.total), icon: 'sack', iconBg: 'var(--green-soft)', iconColor: 'var(--green-2)', spark: serie.map(b => b.total), variation: variation(m.total, pm.total) },
+    { label: 'Transacciones', value: fmtNum(m.count), icon: 'cart', iconBg: 'var(--blue-soft)', iconColor: 'var(--blue)', spark: serie.map(b => b.count), variation: variation(m.count, pm.count) },
+    { label: 'Ticket promedio', value: fmtMXN(m.ticket), icon: 'report', iconBg: 'var(--green-soft)', iconColor: 'var(--green-2)', spark: serie.map(b => (b.count ? b.total / b.count : 0)), variation: variation(m.ticket, pm.ticket) },
+    { label: 'Productos vendidos', value: fmtNum(m.productos), icon: 'package', iconBg: 'var(--line-2)', iconColor: 'var(--ink-2)', spark: serie.map(b => b.productos), variation: variation(m.productos, pm.productos) },
+    { label: 'Ventas a crédito', value: fmtMXN(m.credito), icon: 'credit', iconBg: 'var(--amber-soft)', iconColor: 'var(--amber)', spark: serie.map(b => b.credito), variation: variation(m.credito, pm.credito) },
+    { label: 'Clientes atendidos', value: fmtNum(m.clientes), icon: 'users', iconBg: 'var(--blue-soft)', iconColor: 'var(--blue)', spark: serie.map(b => b.clientes), variation: variation(m.clientes, pm.clientes) },
   ];
 
   // Gráfica principal (geometría)
   const chart = useMemo(() => {
     const mL = 40, mT = 14, mB = 182, xR = 720;
-    if (!buckets.length) return null;
-    const maxV = Math.max(...buckets.map(b => b.total), 1);
+    if (!serie.length) return null;
+    const maxV = Math.max(...serie.map(b => b.total), 1);
     const niceMax = maxV * 1.12;
-    const n = buckets.length;
+    const n = serie.length;
     const xFor = (i: number) => (n === 1 ? (mL + (xR - mL) / 2) : mL + (i / (n - 1)) * (xR - mL));
     const yFor = (v: number) => mB - (v / niceMax) * (mB - mT);
-    const pts = buckets.map((b, i) => ({ x: xFor(i), y: yFor(b.total), b }));
+    const pts = serie.map((b, i) => ({ x: xFor(i), y: yFor(b.total), b }));
     const line = 'M ' + pts.map(p => `${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' L ');
     const area = `${line} L ${pts[pts.length - 1].x.toFixed(1)} ${mB} L ${pts[0].x.toFixed(1)} ${mB} Z`;
     const grid = [0, 0.25, 0.5, 0.75, 1].map(r => ({ y: mT + r * (mB - mT), val: niceMax * (1 - r) }));
     const colW = n > 1 ? (xR - mL) / (n - 1) : (xR - mL);
     const step = Math.max(1, Math.ceil(n / 9));
     return { mL, mT, mB, pts, line, area, grid, colW, step };
-  }, [buckets]);
+  }, [serie]);
 
   // Métodos de pago (dona, tonos verdes)
   const donut = useMemo(() => {
@@ -246,7 +169,7 @@ export const ReporteVentas: React.FC<ReportProps> = ({ startDate, endDate }) => 
     ];
     const totals: Record<string, number> = {};
     order.forEach(o => (totals[o.id] = 0));
-    for (const s of sales) { const t = Number(s.total || 0); if (totals[s.tipo_pago] !== undefined) totals[s.tipo_pago] += t; }
+    for (const mp of data?.metodos_pago ?? []) { if (totals[mp.id] !== undefined) totals[mp.id] = Number(mp.total || 0); }
     const sum = order.reduce((a, o) => a + totals[o.id], 0);
     const r = 68, C = 2 * Math.PI * r;
     let acc = 0;
@@ -256,43 +179,29 @@ export const ReporteVentas: React.FC<ReportProps> = ({ startDate, endDate }) => 
       return { ...o, amt, pct, dash, off, color: GREEN_SHADES[i] };
     });
     return { slices, sum, C, r };
-  }, [sales]);
+  }, [data]);
 
   const topProductos = useMemo(() => {
-    const map: Record<string, { nombre: string; total: number }> = {};
-    for (const s of sales) for (const d of s.ventas_detalles || []) {
-      const p = d.productos; if (!p) continue;
-      if (!map[p.id]) map[p.id] = { nombre: p.nombre, total: 0 };
-      map[p.id].total += Number(d.subtotal || 0);
-    }
-    const arr = Object.values(map).sort((a, b) => b.total - a.total).slice(0, 6);
-    const max = arr.length ? arr[0].total : 1;
-    return arr.map(x => ({ ...x, pct: max > 0 ? (x.total / max) * 100 : 0 }));
-  }, [sales]);
+    const arr = data?.top_productos ?? [];
+    const max = arr.length ? Number(arr[0].total) : 1;
+    return arr.map(x => ({ nombre: x.nombre, total: Number(x.total), pct: max > 0 ? (Number(x.total) / max) * 100 : 0 }));
+  }, [data]);
 
   const porCategoria = useMemo(() => {
-    const map: Record<string, number> = {};
-    for (const s of sales) for (const d of s.ventas_detalles || []) {
-      const cat = d.productos?.categoria || 'Sin categoría';
-      map[cat] = (map[cat] || 0) + Number(d.subtotal || 0);
-    }
-    const arr = Object.entries(map).map(([cat, total]) => ({ cat, total })).sort((a, b) => b.total - a.total);
-    const max = arr.length ? arr[0].total : 1;
-    return arr.map((x, i) => ({ ...x, pct: max > 0 ? (x.total / max) * 100 : 0, color: GREEN_SHADES[Math.min(i, GREEN_SHADES.length - 1)] }));
-  }, [sales]);
+    const arr = data?.por_categoria ?? [];
+    const max = arr.length ? Number(arr[0].total) : 1;
+    return arr.map((x, i) => ({ cat: x.cat, total: Number(x.total), pct: max > 0 ? (Number(x.total) / max) * 100 : 0, color: GREEN_SHADES[Math.min(i, GREEN_SHADES.length - 1)] }));
+  }, [data]);
 
   const porVendedor = useMemo(() => {
-    const map: Record<string, { id: string; count: number; total: number }> = {};
-    for (const s of sales) {
-      const id = s.vendedor_id || '—';
-      if (!map[id]) map[id] = { id, count: 0, total: 0 };
-      map[id].count += 1; map[id].total += Number(s.total || 0);
-    }
-    const arr = Object.values(map).map(v => ({ ...v, nombre: perfilMap[v.id] || 'Sin asignar', ticket: v.count ? v.total / v.count : 0 })).sort((a, b) => b.total - a.total);
+    const arr = (data?.por_vendedor ?? []).map(v => ({
+      id: v.vendedor_id || '—', count: v.count, total: Number(v.total),
+      nombre: v.nombre || 'Sin asignar', ticket: v.count ? Number(v.total) / v.count : 0,
+    }));
     const grand = arr.reduce((a, b) => a + b.total, 0);
     const max = arr.length ? arr[0].total : 1;
     return { rows: arr.map((v, i) => ({ ...v, pctTotal: grand > 0 ? (v.total / grand) * 100 : 0, bar: max > 0 ? (v.total / max) * 100 : 0, avatar: AVATARS[i % AVATARS.length], initials: initialsOf(v.nombre) })), grand };
-  }, [sales, perfilMap]);
+  }, [data]);
 
   if (loading) {
     return (
@@ -356,10 +265,20 @@ export const ReporteVentas: React.FC<ReportProps> = ({ startDate, endDate }) => 
               ))}
               {chart.pts.map((p, i) => (
                 <g className="col" key={`c${i}`}>
-                  <rect x={p.x - chart.colW / 2} y={14} width={chart.colW} height={168} fill="transparent" />
+                  {/* Rect de detección de hover ACOTADO a los límites del SVG [0,760]: con
+                      pocos puntos la columna es muy ancha y, al estar el SVG en overflow:visible,
+                      se desbordaba sobre el menú lateral capturando los clics (fill transparent
+                      sí recibe eventos). El clamp evita que tape el sidebar. */}
+                  <rect
+                    x={Math.max(0, p.x - chart.colW / 2)}
+                    y={14}
+                    width={Math.min(760, p.x + chart.colW / 2) - Math.max(0, p.x - chart.colW / 2)}
+                    height={168}
+                    fill="transparent"
+                  />
                   <line className="col-line" x1={p.x} y1={14} x2={p.x} y2={182} stroke="var(--green)" strokeWidth={1} strokeDasharray="3 3" />
                   <circle className="col-dot" cx={p.x} cy={p.y} r={5} fill="var(--surface)" stroke="var(--green)" strokeWidth={2.5} />
-                  <g className="col-tip" transform={`translate(${Math.min(Math.max(p.x, 45), 715)}, ${p.y})`}>
+                  <g className="col-tip" style={{ pointerEvents: 'none' }} transform={`translate(${Math.min(Math.max(p.x, 45), 715)}, ${p.y})`}>
                     <rect x={-46} y={-48} width={92} height={38} rx={6} fill="var(--ink)" />
                     <text x={0} y={-32} textAnchor="middle" fill="#fff" fontSize={9.5} fontWeight={600} fontFamily="'Manrope'">{p.b.label}</text>
                     <text x={0} y={-17} textAnchor="middle" fill="#fff" fontSize={11} fontWeight={700} fontFamily="'JetBrains Mono'">{fmtMXN(p.b.total)}</text>

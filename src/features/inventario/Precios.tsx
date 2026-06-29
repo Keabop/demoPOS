@@ -1,71 +1,87 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../../lib/supabase';
 import type { Producto } from '../../types';
 import { Icon } from '../../components/Icon';
 import { Topbar } from '../../components/Topbar';
 import { fmtMXN } from '../../lib/format';
+import { round2 } from '../../lib/money';
 import { useConfig } from '../config/ConfigContext';
+import { useCan } from '../auth/useCan';
+import { useSupabasePaginated } from '../../hooks/useSupabasePaginated';
+import { useAlActivar } from '../../hooks/useAlActivar';
+import { Paginator } from '../../components/Paginator';
 
-export const Precios: React.FC = () => {
+const PAGE_SIZE = 50;
+
+// Sanitiza el texto de búsqueda para usarlo en un filtro .or de PostgREST
+// (las comas y paréntesis separan condiciones y romperían la expresión).
+const sanitizar = (s: string) => s.trim().replace(/[,()]/g, ' ').trim();
+
+interface PreciosProps {
+  activo?: boolean;
+}
+
+export const Precios: React.FC<PreciosProps> = ({ activo }) => {
   const { config } = useConfig();
-  const [productos, setProductos] = useState<Producto[]>([]);
-  const [loading, setLoading] = useState(true);
+  const can = useCan();
+  const verCostos = can('ver_costos');
   const [search, setSearch] = useState('');
   const [selectedCat, setSelectedCat] = useState('Todos');
+  const [categories, setCategories] = useState<string[]>(['Todos']);
+  const [totalActivos, setTotalActivos] = useState(0);
 
-  const cargarDatos = async () => {
-    try {
-      setLoading(true);
-      const { data, error } = await supabase
-        .from('productos')
-        .select('*')
-        .eq('activo', true)
-        .order('nombre', { ascending: true });
-
-      if (error) throw error;
-      setProductos(data || []);
-    } catch (err) {
-      console.error('Error al cargar precios:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    cargarDatos();
-
-    // Suscribir a cambios en tiempo real
-    const channel = supabase
-      .channel('precios-realtime-changes')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'productos' },
-        () => {
-          cargarDatos();
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
+  // Metadatos (categorías y total de catálogo) que no caben en una página.
+  const cargarMeta = useCallback(async () => {
+    const [{ data: cats }, { count }] = await Promise.all([
+      supabase.rpc('fn_categorias_productos'),
+      supabase.from('productos').select('id', { count: 'exact', head: true }).eq('activo', true),
+    ]);
+    setCategories(['Todos', ...((cats as string[] | null) ?? [])]);
+    setTotalActivos(count ?? 0);
   }, []);
 
-  const categories = ['Todos', ...new Set(productos.map(p => p.categoria))];
-
-  const filtered = productos.filter(p =>
-    (selectedCat === 'Todos' || p.categoria === selectedCat) &&
-    (p.nombre.toLowerCase().includes(search.toLowerCase()) || p.sku.includes(search))
+  const { data: productos, count, page, loading, setPage, refetch } = useSupabasePaginated<Producto>(
+    (from, to) => {
+      let q = supabase
+        .from('productos')
+        .select('*', { count: 'exact' })
+        .eq('activo', true)
+        .order('nombre', { ascending: true })
+        .order('id', { ascending: true }) // desempate único: hay productos con el mismo nombre
+        .range(from, to);
+      if (selectedCat !== 'Todos') q = q.eq('categoria', selectedCat);
+      const s = sanitizar(search);
+      if (s) q = q.or(`nombre.ilike.%${s}%,sku.ilike.%${s}%`);
+      return q;
+    },
+    [search, selectedCat],
+    PAGE_SIZE,
   );
 
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    cargarMeta();
+    // Actualización en tiempo real del catálogo.
+    const channel = supabase
+      .channel('precios-realtime-changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'productos' }, () => {
+        cargarMeta();
+        refetch();
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [cargarMeta, refetch]);
+
+  // Keep-alive: al regresar a esta pantalla, refresca catálogo y metadatos del servidor.
+  useAlActivar(activo ?? true, () => { cargarMeta(); refetch(); });
 
   return (
     <>
       <Topbar
         title="Lista de Precios"
-        subtitle={loading ? 'Cargando catálogo...' : `${filtered.length} productos en consulta`}
+        subtitle={loading ? 'Cargando catálogo...' : `${count.toLocaleString('es-MX')} productos en consulta`}
       >
-        <button className="btn btn-secondary" onClick={cargarDatos} disabled={loading}>
+        <button className="btn btn-secondary" onClick={refetch} disabled={loading}>
           <Icon name="clock" size={16} />
           Actualizar
         </button>
@@ -121,7 +137,7 @@ export const Precios: React.FC = () => {
               }}
             >
               <Icon name="package" size={16} />
-              <span>{productos.length} Productos Totales</span>
+              <span>{totalActivos.toLocaleString('es-MX')} Productos Totales</span>
             </div>
           </div>
 
@@ -156,7 +172,7 @@ export const Precios: React.FC = () => {
             <div style={{ padding: 48, textAlign: 'center', color: 'var(--muted)', fontSize: 14 }}>
               Cargando productos de {config.nombre}...
             </div>
-          ) : filtered.length === 0 ? (
+          ) : productos.length === 0 ? (
             <div style={{ padding: 48, textAlign: 'center', color: 'var(--muted)', fontSize: 14 }}>
               Ningún producto coincide con la búsqueda.
             </div>
@@ -177,12 +193,15 @@ export const Precios: React.FC = () => {
                     <th style={{ textAlign: 'left', padding: '12px 18px', fontWeight: 600 }}>Producto</th>
                     <th style={{ textAlign: 'left', padding: '12px 8px', fontWeight: 600 }}>SKU</th>
                     <th style={{ textAlign: 'left', padding: '12px 12px', fontWeight: 600, width: 140 }}>Disponibilidad</th>
-                    <th style={{ textAlign: 'right', padding: '12px 12px', fontWeight: 600 }}>Precio Público</th>
-                    <th style={{ textAlign: 'right', padding: '12px 18px', fontWeight: 600 }}>Precio Mayoreo</th>
+                    {verCostos && <th style={{ textAlign: 'right', padding: '12px 12px', fontWeight: 600 }}>Costo</th>}
+                    <th style={{ textAlign: 'right', padding: '12px 12px', fontWeight: 600 }}>Contado</th>
+                    <th style={{ textAlign: 'right', padding: '12px 12px', fontWeight: 600 }}>Crédito</th>
+                    <th style={{ textAlign: 'right', padding: '12px 12px', fontWeight: 600 }}>Subdistribuidor</th>
+                    <th style={{ textAlign: 'right', padding: '12px 18px', fontWeight: 600 }}>IEPS</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {filtered.map(p => {
+                  {productos.map(p => {
                     const stockVal = p.stock || 0;
                     return (
                       <tr
@@ -229,27 +248,47 @@ export const Precios: React.FC = () => {
                         {/* Disponibilidad */}
                         <td style={{ padding: '12px 12px' }}>
                           <span
-                            className={`badge ${stockVal > 0 ? 'ok' : 'red'}`}
+                            className={`badge ${stockVal > 0 ? 'green' : 'red'}`}
                             style={{ height: 20, fontSize: 10, padding: '0 8px', display: 'inline-flex', alignItems: 'center', fontWeight: 600 }}
                           >
                             {stockVal > 0 ? 'Disponible' : 'Agotado'}
                           </span>
                         </td>
 
-                        {/* Precio Público */}
+                        {/* Costo (solo con capacidad ver_costos) */}
+                        {verCostos && (
+                          <td style={{ padding: '12px 12px', textAlign: 'right', fontWeight: 600, color: 'var(--muted)' }} className="num">
+                            {fmtMXN(Number(p.costo) || 0)}
+                          </td>
+                        )}
+
+                        {/* Contado */}
                         <td style={{ padding: '12px 12px', textAlign: 'right', fontWeight: 700 }} className="num">
                           {fmtMXN(p.precio_publico)}
                         </td>
 
-                        {/* Precio Mayoreo */}
-                        <td style={{ padding: '12px 18px', textAlign: 'right', fontWeight: 600, color: 'var(--green-2)' }} className="num">
-                          {fmtMXN(p.precio_mayoreo)}
+                        {/* Crédito */}
+                        <td style={{ padding: '12px 12px', textAlign: 'right', fontWeight: 600 }} className="num">
+                          {fmtMXN(p.precio_credito ?? p.precio_publico)}
+                        </td>
+
+                        {/* Subdistribuidor */}
+                        <td style={{ padding: '12px 12px', textAlign: 'right', fontWeight: 600, color: 'var(--green-2)' }} className="num">
+                          {fmtMXN(p.precio_subdistribuidor ?? p.precio_publico)}
+                        </td>
+
+                        {/* IEPS */}
+                        <td style={{ padding: '12px 18px', textAlign: 'right', fontWeight: 600, color: 'var(--muted)' }} className="num">
+                          {Number(p.tasa_ieps || 0) > 0 ? `${round2(Number(p.tasa_ieps) * 100)}%` : '—'}
                         </td>
                       </tr>
                     );
                   })}
                 </tbody>
               </table>
+              <div style={{ padding: '0 18px' }}>
+                <Paginator page={page} pageSize={PAGE_SIZE} count={count} onPage={setPage} />
+              </div>
             </div>
           )}
         </div>

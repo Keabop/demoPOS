@@ -5,6 +5,7 @@ import { getConfig } from '../../lib/configNegocio';
 import type { Cliente } from '../../types';
 import { Icon } from '../../components/Icon';
 import { fmtMXN } from '../../lib/format';
+import { useCan } from '../auth/useCan';
 
 interface PerfilClienteModalProps {
   isOpen: boolean;
@@ -12,6 +13,7 @@ interface PerfilClienteModalProps {
   onClose: () => void;
   onVerEstadoCuenta: () => void;
   onOpenAbono: (ventaId: string, folio: string, saldo: number) => void;
+  onChanged: () => void;
 }
 
 export const PerfilClienteModal: React.FC<PerfilClienteModalProps> = ({
@@ -20,9 +22,14 @@ export const PerfilClienteModal: React.FC<PerfilClienteModalProps> = ({
   onClose,
   onVerEstadoCuenta,
   onOpenAbono,
+  onChanged,
 }) => {
+  const puedeAdmin = useCan()('administrar_cartera');
+  const [confirm, setConfirm] = useState<null | 'exentar' | 'quitar' | 'archivar'>(null);
+  const [working, setWorking] = useState(false);
   const [activeNotesCount, setActiveNotesCount] = useState<number>(0);
   const [activeNotes, setActiveNotes] = useState<{ id: string; folio: string; total: number; saldo: number }[]>([]);
+  const [saldoConInteres, setSaldoConInteres] = useState<number | null>(null);
   const [loadingNotes, setLoadingNotes] = useState(false);
   const [lastVenta, setLastVenta] = useState<{ folio: string; fecha: string; total: number } | null>(null);
 
@@ -31,43 +38,24 @@ export const PerfilClienteModal: React.FC<PerfilClienteModalProps> = ({
     try {
       setLoadingNotes(true);
 
-      // 1. Get all credit sales
-      const { data: salesData, error: salesError } = await supabase
-        .from('ventas')
-        .select('id, folio, total')
-        .eq('cliente_id', cliente.id)
-        .eq('tipo_pago', 'credito');
+      // 1. Saldo del cliente CON interés moratorio (motor 2% mensual).
+      const { data: sc } = await supabase.rpc('fn_saldo_cliente', { p_cliente_id: cliente.id });
+      setSaldoConInteres(sc && sc[0] ? Number(sc[0].saldo_total) : 0);
 
-      if (!salesError && salesData && salesData.length > 0) {
-        const saleIds = salesData.map(s => s.id);
-        const { data: paymentsData, error: paymentsError } = await supabase
-          .from('pagos_credito')
-          .select('venta_id, monto')
-          .in('venta_id', saleIds);
-        
-        if (!paymentsError) {
-          const payments = paymentsData || [];
-          const activeNotesList = salesData.map(s => {
-            const salePayments = payments.filter(p => p.venta_id === s.id);
-            const totalPaid = salePayments.reduce((sum, p) => sum + p.monto, 0);
-            const remaining = Math.max(0, s.total - totalPaid);
-            return {
-              id: s.id,
-              folio: s.folio,
-              total: s.total,
-              saldo: remaining
-            };
-          }).filter(n => n.saldo > 0);
+      // 2. Notas activas con saldo interest-aware (capital + interés por nota).
+      const { data: edc } = await supabase.rpc('fn_estado_cuenta_cliente', { p_cliente_id: cliente.id });
+      const activeNotesList = ((edc ?? []) as Array<{ venta_id: string; folio: string; total: number; saldo_total: number }>)
+        .filter(n => Number(n.saldo_total) > 0)
+        .map(n => ({
+          id: n.venta_id,
+          folio: n.folio,
+          total: Number(n.total),
+          saldo: Number(n.saldo_total),
+        }));
+      setActiveNotes(activeNotesList);
+      setActiveNotesCount(activeNotesList.length);
 
-          setActiveNotes(activeNotesList);
-          setActiveNotesCount(activeNotesList.length);
-        }
-      } else {
-        setActiveNotes([]);
-        setActiveNotesCount(0);
-      }
-
-      // 2. Get last purchase (any payment type)
+      // 3. Get last purchase (any payment type)
       const { data: lastVentaData, error: lastVentaError } = await supabase
         .from('ventas')
         .select('folio, fecha, total')
@@ -119,11 +107,57 @@ export const PerfilClienteModal: React.FC<PerfilClienteModalProps> = ({
 
 
   const getAvatarBg = () => {
-    return cliente.activo_para_credito ? 'oklch(0.42 0.10 150)' : 'oklch(0.55 0.14 25)';
+    return cliente.activo_para_credito ? 'oklch(0.4 0.05 145)' : 'oklch(0.55 0.14 25)';
+  };
+
+  // Acciones de cartera (gateadas por la capacidad administrar_cartera + RPC con guard en BD).
+  const ejecutar = async () => {
+    if (!cliente) return;
+    setWorking(true);
+    try {
+      if (confirm === 'exentar') {
+        const { error } = await supabase.rpc('fn_cliente_exentar', { p_cliente: cliente.id, p_exento: true });
+        if (error) throw error;
+        toast.success('Cliente desbloqueado como excepción.');
+      } else if (confirm === 'quitar') {
+        const { error } = await supabase.rpc('fn_cliente_exentar', { p_cliente: cliente.id, p_exento: false });
+        if (error) throw error;
+        toast.success('Excepción retirada; vuelve al control automático.');
+      } else if (confirm === 'archivar') {
+        const { error } = await supabase.rpc('fn_cliente_archivar', { p_cliente: cliente.id });
+        if (error) throw error;
+        toast.success('Cliente archivado.');
+      }
+      setConfirm(null);
+      onChanged();
+      onClose();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'No se pudo completar la acción.');
+    } finally {
+      setWorking(false);
+    }
+  };
+
+  const TEXTO_CONFIRM: Record<'exentar' | 'quitar' | 'archivar', { titulo: string; cuerpo: string; cta: string }> = {
+    exentar: {
+      titulo: '¿Dar excepción de crédito?',
+      cuerpo: 'Este cliente quedará como excepción: podrá seguir comprando a crédito y el sistema ya NO lo bloqueará automáticamente aunque tenga deuda vencida, hasta que le quites la excepción.',
+      cta: 'Sí, dar excepción',
+    },
+    quitar: {
+      titulo: '¿Quitar la excepción?',
+      cuerpo: 'El cliente volverá al control automático: si tiene deuda vencida, el sistema podrá bloquearlo en su próxima evaluación.',
+      cta: 'Sí, quitar excepción',
+    },
+    archivar: {
+      titulo: '¿Archivar este cliente?',
+      cuerpo: 'El cliente se archivará: dejará de aparecer en listados y no se le podrá vender. Se conserva su historial y podrás reactivarlo después.',
+      cta: 'Sí, archivar',
+    },
   };
 
   const limite = Number(cliente.limite_credito || 0);
-  const saldo = Number(cliente.saldo_deudor || 0);
+  const saldo = saldoConInteres ?? Number(cliente.saldo_deudor || 0);
   const disponible = Math.max(0, limite - saldo);
   const credUsedPct = limite > 0 ? Math.min(100, (saldo / limite) * 100) : 0;
 
@@ -289,11 +323,11 @@ export const PerfilClienteModal: React.FC<PerfilClienteModalProps> = ({
           {/* Status badge */}
           <div style={{
             display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-            padding: '10px 14px', background: cliente.activo_para_credito ? 'var(--ok-soft)' : 'var(--red-soft)',
-            borderRadius: 8, border: `1px solid ${cliente.activo_para_credito ? 'var(--ok-line)' : 'oklch(0.58 0.16 25 / 0.1)'}`
+            padding: '10px 14px', background: cliente.activo_para_credito ? 'var(--green-soft)' : 'var(--red-soft)',
+            borderRadius: 8, border: `1px solid ${cliente.activo_para_credito ? 'var(--green-line)' : 'oklch(0.58 0.16 25 / 0.1)'}`
           }}>
-            <span style={{ fontSize: 12, fontWeight: 600, color: cliente.activo_para_credito ? 'var(--ok-2)' : 'var(--red)' }}>Estatus de Crédito:</span>
-            <span className={`badge ${cliente.activo_para_credito ? 'ok' : 'red'}`} style={{ fontSize: 11, fontWeight: 700 }}>
+            <span style={{ fontSize: 12, fontWeight: 600, color: cliente.activo_para_credito ? 'var(--green-2)' : 'var(--red)' }}>Estatus de Crédito:</span>
+            <span className={`badge ${cliente.activo_para_credito ? 'green' : 'red'}`} style={{ fontSize: 11, fontWeight: 700 }}>
               <span className="dot"></span>
               {cliente.activo_para_credito ? 'Activo (Apto)' : 'Bloqueado (Moroso)'}
             </span>
@@ -309,7 +343,7 @@ export const PerfilClienteModal: React.FC<PerfilClienteModalProps> = ({
             </div>
             <div className="perfil-info-row">
               <span className="perfil-info-label"><Icon name="file" size={14} />Código Cliente</span>
-              <span className="perfil-info-value mono" style={{ fontSize: 11, color: 'var(--muted)' }}>{cliente.id}</span>
+              <span className="perfil-info-value mono" style={{ fontSize: 13, fontWeight: 600 }}>{cliente.numero_cliente != null ? '#' + cliente.numero_cliente : '—'}</span>
             </div>
             <div className="perfil-info-row">
               <span className="perfil-info-label"><Icon name="clock" size={14} />Plazo de Crédito</span>
@@ -347,7 +381,7 @@ export const PerfilClienteModal: React.FC<PerfilClienteModalProps> = ({
                 className="perfil-progress-fill"
                 style={{
                   width: `${credUsedPct}%`,
-                  backgroundColor: saldo > limite ? 'var(--red)' : (credUsedPct > 80 ? 'var(--amber)' : 'var(--ok)')
+                  backgroundColor: saldo > limite ? 'var(--red)' : (credUsedPct > 80 ? 'var(--amber)' : 'var(--green)')
                 }}
               ></div>
             </div>
@@ -384,8 +418,52 @@ export const PerfilClienteModal: React.FC<PerfilClienteModalProps> = ({
               Registrar Abono
             </button>
           )}
+
+          {puedeAdmin && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 4, paddingTop: 10, borderTop: '1px solid var(--line-2)' }}>
+              {!cliente.exento_bloqueo ? (
+                <button className="btn btn-secondary btn-block" style={{ height: 40, fontSize: 13, gap: 6 }} onClick={() => setConfirm('exentar')}>
+                  <Icon name="key" size={14} />
+                  {cliente.activo_para_credito ? 'Dar excepción de bloqueo' : 'Desbloquear crédito (dar excepción)'}
+                </button>
+              ) : (
+                <button className="btn btn-secondary btn-block" style={{ height: 40, fontSize: 13, gap: 6 }} onClick={() => setConfirm('quitar')}>
+                  <Icon name="x" size={14} />
+                  Quitar excepción
+                </button>
+              )}
+              <button
+                className="btn btn-secondary btn-block"
+                style={{ height: 40, fontSize: 13, gap: 6, color: saldo > 0 ? 'var(--muted)' : 'var(--red)', opacity: saldo > 0 ? 0.6 : 1 }}
+                disabled={saldo > 0}
+                onClick={() => setConfirm('archivar')}
+                title={saldo > 0 ? 'Liquide el saldo del cliente antes de archivar' : undefined}
+              >
+                <Icon name="trash" size={14} />
+                Archivar cliente
+              </button>
+            </div>
+          )}
         </div>
       </div>
+
+      {confirm && (
+        <div className="confirm-modal-overlay" onClick={(e) => { e.stopPropagation(); if (!working) setConfirm(null); }}>
+          <div className="confirm-modal-card" onClick={(e) => e.stopPropagation()}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, color: confirm === 'archivar' ? 'var(--red)' : 'var(--ink)' }}>
+              <Icon name={confirm === 'archivar' ? 'trash' : 'alert'} size={22} />
+              <div style={{ fontWeight: 700, fontSize: 16 }}>{TEXTO_CONFIRM[confirm].titulo}</div>
+            </div>
+            <p style={{ fontSize: 13, color: 'var(--ink-2)', lineHeight: 1.5 }}>{TEXTO_CONFIRM[confirm].cuerpo}</p>
+            <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end', marginTop: 8 }}>
+              <button className="btn btn-secondary" disabled={working} onClick={() => setConfirm(null)}>Cancelar</button>
+              <button className="btn btn-primary" disabled={working} onClick={ejecutar}>
+                {working ? 'Procesando…' : TEXTO_CONFIRM[confirm].cta}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

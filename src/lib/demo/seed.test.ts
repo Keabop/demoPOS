@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import { PGlite } from '@electric-sql/pglite';
-import { DEMO_SCHEMA_SQL } from './schema';
+import { FULL_SCHEMA_SQL } from './schema_all';
 import { DEMO_SEED_SQL } from './seed';
 
 // UUIDs de referencia usados por el dataset (deben coincidir con seed.ts).
@@ -12,7 +12,7 @@ describe('DEMO_SEED_SQL', () => {
 
   beforeAll(async () => {
     db = new PGlite(); // Postgres en memoria (node)
-    await db.exec(DEMO_SCHEMA_SQL);
+    await db.exec(FULL_SCHEMA_SQL);
     await db.exec(DEMO_SEED_SQL);
   });
 

@@ -1,0 +1,49 @@
+/* Tema ámbar "Mostrador cálido" para el tutorial guiado (driver.js). */
+.driver-popover.tour-amber {
+  background: #ffffff;
+  border-radius: 12px;
+  box-shadow: 0 14px 44px -10px rgba(20, 19, 13, .38);
+  max-width: 345px;
+  padding: 18px 18px 14px;
+}
+.driver-popover.tour-amber .driver-popover-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: #14191a;
+}
+.driver-popover.tour-amber .driver-popover-description {
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: #3a4140;
+}
+.driver-popover.tour-amber .driver-popover-progress-text {
+  font-size: 11px;
+  letter-spacing: .3px;
+  color: #8a8474;
+}
+.driver-popover.tour-amber .driver-popover-footer button {
+  text-shadow: none;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 13px;
+  padding: 7px 14px;
+}
+.driver-popover.tour-amber .driver-popover-next-btn,
+.driver-popover.tour-amber .driver-popover-footer .driver-popover-next-btn {
+  background: oklch(0.69 0.14 76); /* ámbar miel (marca) */
+  color: #1a140a;
+  font-weight: 700;
+  border: 0;
+}
+.driver-popover.tour-amber .driver-popover-prev-btn {
+  background: transparent;
+  color: #6b7280;
+  border: 1px solid #e7e3d8;
+}
+.driver-popover.tour-amber .driver-popover-close-btn {
+  color: #a5aaa4;
+}
+/* La flecha del popover en blanco (combina con el fondo). */
+.driver-popover.tour-amber .driver-popover-arrow {
+  border-color: #ffffff;
+}

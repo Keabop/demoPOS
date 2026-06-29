@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useId } from 'react';
 import { Icon } from './Icon';
 import { supabase } from '../lib/supabase';
 
@@ -10,6 +10,10 @@ interface TopbarProps {
 
 export const Topbar: React.FC<TopbarProps> = ({ title, subtitle, children }) => {
   const [cajaStatus, setCajaStatus] = useState<{ abierta: boolean; label?: string; esPrevio?: boolean }>({ abierta: false });
+  // Nombre de canal ÚNICO por instancia: con keep-alive (varias pantallas montadas)
+  // hay varios Topbars vivos; un nombre fijo colisiona en Supabase Realtime
+  // ("cannot add postgres_changes after subscribe()") y tumba la app.
+  const uid = useId();
 
   useEffect(() => {
     const checkCaja = async () => {
@@ -69,9 +73,9 @@ export const Topbar: React.FC<TopbarProps> = ({ title, subtitle, children }) => 
 
     checkCaja();
 
-    // Sincronizar en tiempo real
+    // Sincronizar en tiempo real (canal único por instancia, ver `uid`).
     const channel = supabase
-      .channel('topbar-caja-sync')
+      .channel(`topbar-caja-sync-${uid}`)
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'movimientos_caja' },
@@ -84,7 +88,7 @@ export const Topbar: React.FC<TopbarProps> = ({ title, subtitle, children }) => 
     return () => {
       supabase.removeChannel(channel);
     };
-  }, []);
+  }, [uid]);
 
   return (
     <header className="topbar">
@@ -114,11 +118,11 @@ export const Topbar: React.FC<TopbarProps> = ({ title, subtitle, children }) => 
               alignItems: 'center', 
               gap: 8, 
               padding: '6px 12px', 
-              background: cajaStatus.esPrevio ? 'var(--amber-soft)' : 'var(--ok-soft)',
+              background: cajaStatus.esPrevio ? 'var(--amber-soft)' : 'var(--green-soft)', 
               borderRadius: 999, 
               fontSize: 12, 
               fontWeight: 600, 
-              color: cajaStatus.esPrevio ? 'oklch(0.52 0.13 75)' : 'var(--ok-2)'
+              color: cajaStatus.esPrevio ? 'oklch(0.52 0.13 75)' : 'var(--green-2)'
             }}
             title={cajaStatus.esPrevio ? 'Este turno es de un día anterior o lleva abierto más de 16 horas. Se recomienda realizar corte de caja.' : undefined}
           >
@@ -126,7 +130,7 @@ export const Topbar: React.FC<TopbarProps> = ({ title, subtitle, children }) => 
               width: 6, 
               height: 6, 
               borderRadius: 999, 
-              background: cajaStatus.esPrevio ? 'var(--amber)' : 'var(--ok)'
+              background: cajaStatus.esPrevio ? 'var(--amber)' : 'var(--green)'
             }}></span>
             Caja abierta · {cajaStatus.label} {cajaStatus.esPrevio && <span style={{fontSize: 10, opacity: 0.85, fontWeight: 700}}>· Turno previo</span>}
           </div>

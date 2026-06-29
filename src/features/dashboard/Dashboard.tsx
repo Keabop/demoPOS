@@ -4,49 +4,44 @@ import { Icon } from '../../components/Icon';
 import { Topbar } from '../../components/Topbar';
 import { fmtMXN } from '../../lib/format';
 import { TZ_MX, ymdEnMX, inicioDiaMX } from '../../lib/dates';
+import { useAlActivar } from '../../hooks/useAlActivar';
 
 const formatK = (v: number) => (v >= 1_000_000 ? `${(v / 1e6).toFixed(1)}M` : v >= 1000 ? `${Math.round(v / 1000)}k` : `${Math.round(v)}`);
 
 interface DashboardProps {
   onNav: (screen: string) => void;
+  activo?: boolean;
 }
 
-interface SaleRecord {
-  folio: string;
-  cliente: string;
-  tipo: string;
-  hora: string;
-  total: number;
+interface SaleRecord { folio: string; cliente: string; tipo: string; hora: string; total: number; }
+interface LowStockProduct { id: string; name: string; unit: string; stock: number; min: number; }
+interface OverdueCredit { n: string; m: number; dias: number; }
+
+// Respuesta de la RPC fn_dashboard (agregados en SQL).
+interface DashboardData {
+  ventasHoySum: number; ventasHoyCount: number; ventasHoyDevueltas: number;
+  lowStockCount: number; lowStockList: { id: string; name: string; unit: string; stock: number; min: number }[];
+  pendingCreditsCount: number; pendingCreditsSum: number;
+  activeClientsCount: number;
+  recentSales: { folio: string; tipo_pago: string; total: number; fecha: string; cliente: string | null }[];
+  overdueCount: number; overdueList: { n: string; m: number; dias: number }[];
 }
 
-interface LowStockProduct {
-  id: string;
-  name: string;
-  unit: string;
-  stock: number;
-  min: number;
-}
-
-interface OverdueCredit {
-  n: string;
-  m: number;
-  dias: number;
-}
-
-export const Dashboard: React.FC<DashboardProps> = ({ onNav }) => {
+export const Dashboard: React.FC<DashboardProps> = ({ onNav, activo }) => {
   const [loading, setLoading] = useState(true);
-  
-  // Real stats loaded from DB
+
   const [todaySalesSum, setTodaySalesSum] = useState(0);
   const [todayTransactions, setTodayTransactions] = useState(0);
+  const [todayDevueltas, setTodayDevueltas] = useState(0);
   const [lowStockCount, setLowStockCount] = useState(0);
   const [pendingCreditsCount, setPendingCreditsCount] = useState(0);
   const [pendingCreditsSum, setPendingCreditsSum] = useState(0);
   const [activeClientsCount, setActiveClientsCount] = useState(0);
-  
+
   const [lowStockList, setLowStockList] = useState<LowStockProduct[]>([]);
   const [recentSales, setRecentSales] = useState<SaleRecord[]>([]);
   const [overdueCredits, setOverdueCredits] = useState<OverdueCredit[]>([]);
+  const [overdueCount, setOverdueCount] = useState(0);
   const [weeklySalesData, setWeeklySalesData] = useState<{ d: string; sub?: string; v: number }[]>([]);
   const [timeRange, setTimeRange] = useState<'semana' | 'mes' | 'ano'>('semana');
   const [chartLoading, setChartLoading] = useState(false);
@@ -59,181 +54,29 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNav }) => {
   const loadDashboardData = async () => {
     try {
       setLoading(true);
-
-      // 1. Fetch Today's Sales — "hoy" anclado a la hora de México (no del navegador).
-      // (Las gráficas de tendencia semana/mes/año agrupan por día local del navegador;
-      //  para un solo local en Irapuato coincide con MX.)
+      // KPIs y listas cortas agregados en SQL (fn_dashboard); "hoy" anclado a MX.
       const todayStart = inicioDiaMX(ymdEnMX());
-      const { data: salesToday, error: salesErr } = await supabase
-        .from('ventas')
-        .select('total, tipo_pago, estado, fecha')
-        .gte('fecha', todayStart.toISOString());
+      const { data, error } = await supabase.rpc('fn_dashboard', { p_hoy_inicio: todayStart.toISOString() });
+      if (error) throw error;
+      const d = data as DashboardData;
 
-      if (salesErr) throw salesErr;
-
-      let salesSum = 0;
-      let txs = 0;
-      if (salesToday) {
-        salesToday.forEach(s => {
-          if (s.estado !== 'cancelada') {
-            salesSum += Number(s.total);
-            txs++;
-          }
-        });
-      }
-      setTodaySalesSum(salesSum);
-      setTodayTransactions(txs);
-
-      // 2. Fetch all products to calculate low stock (with min thresholds)
-      const { data: prods, error: prodsErr } = await supabase
-        .from('productos')
-        .select('id, nombre, unidad, stock, stock_minimo');
-      
-      if (prodsErr) throw prodsErr;
-
-      let lowCount = 0;
-      const lowList: LowStockProduct[] = [];
-      if (prods) {
-        prods.forEach(p => {
-          const stockVal = Number(p.stock || 0);
-          const minVal = Number(p.stock_minimo || 0);
-          if (stockVal < minVal) {
-            lowCount++;
-            lowList.push({
-              id: p.id,
-              name: p.nombre,
-              unit: p.unidad,
-              stock: stockVal,
-              min: minVal
-            });
-          }
-        });
-      }
-      setLowStockCount(lowCount);
-      // Sort low stock by stock percentage ascending (critical first)
-      lowList.sort((a, b) => {
-        const pctA = a.min > 0 ? a.stock / a.min : 1;
-        const pctB = b.min > 0 ? b.stock / b.min : 1;
-        return pctA - pctB;
-      });
-      setLowStockList(lowList);
-
-      // 3. Fetch Pending Credit Sales (and subtract their payments)
-      const { data: pendingCredits, error: creditsErr } = await supabase
-        .from('ventas')
-        .select(`
-          id,
-          total,
-          pagos_credito (
-            monto
-          )
-        `)
-        .eq('tipo_pago', 'credito')
-        .eq('estado', 'pendiente');
-
-      if (creditsErr) throw creditsErr;
-
-      let creditSum = 0;
-      let pendingCount = 0;
-      if (pendingCredits) {
-        pendingCredits.forEach(c => {
-          const totalPaid = (c.pagos_credito as { monto: number }[])?.reduce((sum, p) => sum + Number(p.monto), 0) || 0;
-          const pendingBalance = Math.max(0, Number(c.total) - totalPaid);
-          if (pendingBalance > 0) {
-            creditSum += pendingBalance;
-            pendingCount++;
-          }
-        });
-      }
-      setPendingCreditsCount(pendingCount);
-      setPendingCreditsSum(creditSum);
-
-      // 4. Fetch Active Clients
-      const { data: clis, error: clisErr } = await supabase
-        .from('clientes')
-        .select('id, nombre, saldo_deudor, limite_credito, activo_para_credito');
-
-      if (clisErr) throw clisErr;
-      setActiveClientsCount(clis?.length || 0);
-
-      // 5. Fetch recent 5 sales with client name
-      const { data: recSales, error: recSalesErr } = await supabase
-        .from('ventas')
-        .select(`
-          folio,
-          tipo_pago,
-          total,
-          fecha,
-          clientes (
-            nombre
-          )
-        `)
-        .order('fecha', { ascending: false })
-        .limit(5);
-
-      if (recSalesErr) throw recSalesErr;
-
-      const formattedSales: SaleRecord[] = (recSales || []).map(r => {
-        const dateObj = new Date(r.fecha);
-        const timeStr = dateObj.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', hour12: false });
-        const clientName = (r.clientes as { nombre?: string } | null)?.nombre || 'Venta Anónima';
-        return {
-          folio: r.folio,
-          cliente: clientName,
-          tipo: r.tipo_pago === 'credito' ? 'Crédito' : r.tipo_pago === 'tarjeta' ? 'Tarjeta' : 'Efectivo',
-          hora: timeStr,
-          total: Number(r.total)
-        };
-      });
-      setRecentSales(formattedSales);
-
-      // 6. Fetch Overdue Credits (pending credits that are past their due date and subtract payments)
-      const { data: overCredits, error: overCreditsErr } = await supabase
-        .from('ventas')
-        .select(`
-          id,
-          total,
-          fecha,
-          plazo_dias,
-          clientes:cliente_id (
-            nombre,
-            dias_credito
-          ),
-          pagos_credito (
-            monto
-          )
-        `)
-        .eq('tipo_pago', 'credito')
-        .eq('estado', 'pendiente');
-
-      if (overCreditsErr) throw overCreditsErr;
-
-      const formattedOverdue: OverdueCredit[] = (overCredits || [])
-        .map(o => {
-          const totalPaid = (o.pagos_credito as { monto: number }[])?.reduce((sum, p) => sum + Number(p.monto), 0) || 0;
-          const pendingBalance = Math.max(0, Number(o.total) - totalPaid);
-
-          const plazo = Number(o.plazo_dias) || Number((o.clientes as { dias_credito?: number } | null)?.dias_credito) || 30;
-          const fechaVenta = new Date(o.fecha);
-          const fechaVencimiento = new Date(fechaVenta.getTime() + plazo * 24 * 60 * 60 * 1000);
-          const isOverdue = Date.now() > fechaVencimiento.getTime();
-          const diffTime = Date.now() - fechaVencimiento.getTime();
-          const diffDays = Math.max(0, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
-          return {
-            n: (o.clientes as { nombre?: string } | null)?.nombre || 'Cliente Desconocido',
-            m: pendingBalance,
-            dias: diffDays,
-            isOverdue
-          };
-        })
-        .filter(x => x.isOverdue && x.m > 0)
-        .map(x => ({
-          n: x.n,
-          m: x.m,
-          dias: x.dias
-        }));
-      setOverdueCredits(formattedOverdue);
-
+      setTodaySalesSum(Number(d.ventasHoySum));
+      setTodayTransactions(d.ventasHoyCount);
+      setTodayDevueltas(Number(d.ventasHoyDevueltas) || 0);
+      setLowStockCount(d.lowStockCount);
+      setLowStockList(d.lowStockList.map(p => ({ id: p.id, name: p.name, unit: p.unit, stock: Number(p.stock), min: Number(p.min) })));
+      setPendingCreditsCount(d.pendingCreditsCount);
+      setPendingCreditsSum(Number(d.pendingCreditsSum));
+      setActiveClientsCount(d.activeClientsCount);
+      setRecentSales(d.recentSales.map(r => ({
+        folio: r.folio,
+        cliente: r.cliente || 'Venta Anónima',
+        tipo: r.tipo_pago === 'credito' ? 'Crédito' : r.tipo_pago === 'tarjeta' ? 'Tarjeta' : 'Efectivo',
+        hora: new Date(r.fecha).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', hour12: false }),
+        total: Number(r.total),
+      })));
+      setOverdueCount(d.overdueCount);
+      setOverdueCredits(d.overdueList.map(o => ({ n: o.n, m: Number(o.m), dias: o.dias })));
     } catch (err) {
       console.error('Error al cargar métricas del Tablero:', err);
     } finally {
@@ -244,138 +87,44 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNav }) => {
   const loadChartData = async (range: 'semana' | 'mes' | 'ano') => {
     try {
       setChartLoading(true);
+      const keyDay = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      const keyMonth = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+
+      const inicio = new Date();
+      if (range === 'semana') { inicio.setDate(inicio.getDate() - 6); inicio.setHours(0, 0, 0, 0); }
+      else if (range === 'mes') { inicio.setDate(inicio.getDate() - 27); inicio.setHours(0, 0, 0, 0); }
+      else { inicio.setMonth(inicio.getMonth() - 11); inicio.setDate(1); inicio.setHours(0, 0, 0, 0); }
+
+      const { data, error } = await supabase.rpc('fn_dashboard_serie', { p_inicio: inicio.toISOString(), p_modo: range });
+      if (error) throw error;
+      const buckets = (data as { bucket: string; total: number }[]) || [];
+      const by = new Map(buckets.map(b => [b.bucket, Number(b.total)]));
+
       if (range === 'semana') {
-        const sevenDaysAgo = new Date();
-        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6);
-        sevenDaysAgo.setHours(0, 0, 0, 0);
-
-        const { data: sales, error } = await supabase
-          .from('ventas')
-          .select('total, fecha')
-          .gte('fecha', sevenDaysAgo.toISOString())
-          .neq('estado', 'cancelada')
-          .order('fecha', { ascending: true });
-
-        if (error) throw error;
-
         const dayNames = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
-        const last7Days = Array.from({ length: 7 }).map((_, i) => {
-          const d = new Date();
-          d.setDate(d.getDate() - 6 + i);
-          return {
-            dateStr: d.toDateString(),
-            label: dayNames[d.getDay()],
-            val: 0
-          };
+        const days = Array.from({ length: 7 }).map((_, i) => {
+          const d = new Date(); d.setDate(d.getDate() - 6 + i);
+          return { d: dayNames[d.getDay()], v: by.get(keyDay(d)) ?? 0 };
         });
-
-        if (sales) {
-          sales.forEach(s => {
-            const utcStr = s.fecha.endsWith('Z') || s.fecha.includes('+') ? s.fecha : s.fecha + 'Z';
-            const sDate = new Date(utcStr).toDateString();
-            const foundDay = last7Days.find(d => d.dateStr === sDate);
-            if (foundDay) {
-              foundDay.val += Number(s.total);
-            }
-          });
-        }
-
-        setWeeklySalesData(last7Days.map(d => ({ d: d.label, v: d.val })));
-
+        setWeeklySalesData(days);
       } else if (range === 'mes') {
-        const twentyEightDaysAgo = new Date();
-        twentyEightDaysAgo.setDate(twentyEightDaysAgo.getDate() - 27);
-        twentyEightDaysAgo.setHours(0, 0, 0, 0);
-
-        const { data: sales, error } = await supabase
-          .from('ventas')
-          .select('total, fecha')
-          .gte('fecha', twentyEightDaysAgo.toISOString())
-          .neq('estado', 'cancelada')
-          .order('fecha', { ascending: true });
-
-        if (error) throw error;
-
-        const last4Weeks = Array.from({ length: 4 }).map((_, i) => {
-          const end = new Date();
-          end.setDate(end.getDate() - (3 - i) * 7);
-          const start = new Date(end.getTime());
-          start.setDate(start.getDate() - 6);
-
-          const startDay = String(start.getDate()).padStart(2, '0');
-          const startMonth = String(start.getMonth() + 1).padStart(2, '0');
-          const endDay = String(end.getDate()).padStart(2, '0');
-          const endMonth = String(end.getMonth() + 1).padStart(2, '0');
-
-          return {
-            start: start,
-            end: end,
-            label: `Sem ${i + 1}`,
-            subLabel: `${startDay}/${startMonth}-${endDay}/${endMonth}`,
-            val: 0
-          };
+        const weeks = Array.from({ length: 4 }).map((_, i) => {
+          const end = new Date(); end.setDate(end.getDate() - (3 - i) * 7); end.setHours(0, 0, 0, 0);
+          const start = new Date(end); start.setDate(start.getDate() - 6);
+          let v = 0;
+          const cur = new Date(start);
+          while (cur <= end) { v += by.get(keyDay(cur)) ?? 0; cur.setDate(cur.getDate() + 1); }
+          const sub = `${String(start.getDate()).padStart(2, '0')}/${String(start.getMonth() + 1).padStart(2, '0')}-${String(end.getDate()).padStart(2, '0')}/${String(end.getMonth() + 1).padStart(2, '0')}`;
+          return { d: `Sem ${i + 1}`, sub, v };
         });
-
-        if (sales) {
-          sales.forEach(s => {
-            const utcStr = s.fecha.endsWith('Z') || s.fecha.includes('+') ? s.fecha : s.fecha + 'Z';
-            const saleDate = new Date(utcStr);
-            const foundWeek = last4Weeks.find(w => {
-              const sCopy = new Date(saleDate.getFullYear(), saleDate.getMonth(), saleDate.getDate());
-              const wStartCopy = new Date(w.start.getFullYear(), w.start.getMonth(), w.start.getDate());
-              const wEndCopy = new Date(w.end.getFullYear(), w.end.getMonth(), w.end.getDate());
-              return sCopy >= wStartCopy && sCopy <= wEndCopy;
-            });
-            if (foundWeek) {
-              foundWeek.val += Number(s.total);
-            }
-          });
-        }
-
-        setWeeklySalesData(last4Weeks.map(w => ({ d: w.label, sub: w.subLabel, v: w.val })));
-
-      } else if (range === 'ano') {
-        const oneYearAgo = new Date();
-        oneYearAgo.setMonth(oneYearAgo.getMonth() - 11);
-        oneYearAgo.setDate(1);
-        oneYearAgo.setHours(0, 0, 0, 0);
-
-        const { data: sales, error } = await supabase
-          .from('ventas')
-          .select('total, fecha')
-          .gte('fecha', oneYearAgo.toISOString())
-          .neq('estado', 'cancelada')
-          .order('fecha', { ascending: true });
-
-        if (error) throw error;
-
+        setWeeklySalesData(weeks);
+      } else {
         const monthNames = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
-        const last12Months = Array.from({ length: 12 }).map((_, i) => {
-          const d = new Date();
-          d.setMonth(d.getMonth() - 11 + i);
-          return {
-            year: d.getFullYear(),
-            month: d.getMonth(),
-            label: monthNames[d.getMonth()],
-            val: 0
-          };
+        const months = Array.from({ length: 12 }).map((_, i) => {
+          const d = new Date(); d.setMonth(d.getMonth() - 11 + i);
+          return { d: monthNames[d.getMonth()], sub: String(d.getFullYear()).slice(-2), v: by.get(keyMonth(d)) ?? 0 };
         });
-
-        if (sales) {
-          sales.forEach(s => {
-            const utcStr = s.fecha.endsWith('Z') || s.fecha.includes('+') ? s.fecha : s.fecha + 'Z';
-            const saleDate = new Date(utcStr);
-            const sYear = saleDate.getFullYear();
-            const sMonth = saleDate.getMonth();
-
-            const foundMonth = last12Months.find(m => m.year === sYear && m.month === sMonth);
-            if (foundMonth) {
-              foundMonth.val += Number(s.total);
-            }
-          });
-        }
-
-        setWeeklySalesData(last12Months.map(m => ({ d: m.label, sub: String(m.year).slice(-2), v: m.val })));
+        setWeeklySalesData(months);
       }
     } catch (err) {
       console.error('Error al cargar datos del gráfico:', err);
@@ -385,12 +134,18 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNav }) => {
   };
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadDashboardData();
   }, []);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadChartData(timeRange);
   }, [timeRange]);
+
+  // Keep-alive: al volver a esta pantalla (sin remontar), recarga KPIs y la serie
+  // del gráfico desde el servidor, conservando el rango de tiempo seleccionado.
+  useAlActivar(activo ?? true, () => { loadDashboardData(); loadChartData(timeRange); });
 
   const totalWeeklySalesSum = weeklySalesData.reduce((acc, curr) => acc + curr.v, 0);
 
@@ -429,42 +184,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNav }) => {
   }
 
   const cards = [
-    {
-      key: 'sales',
-      label: 'Ventas de hoy',
-      value: fmtMXN(todaySalesSum),
-      sub: `${todayTransactions} transacciones`,
-      icon: 'cash',
-      accent: 'green',
-      screen: 'caja',
-    },
-    {
-      key: 'stock',
-      label: 'Alertas de stock bajo',
-      value: lowStockCount,
-      sub: lowStockList.length > 0 ? (lowStockList.map(p => p.name.split(' ')[0]).join(', ').slice(0, 42) + '...') : 'Sin alertas de stock',
-      icon: 'alert',
-      accent: 'amber',
-      screen: 'inventario',
-    },
-    {
-      key: 'credit',
-      label: 'Notas a crédito pendientes',
-      value: pendingCreditsCount,
-      sub: `Por cobrar ${fmtMXN(pendingCreditsSum)}`,
-      icon: 'credit',
-      accent: 'red',
-      screen: 'credito',
-    },
-    {
-      key: 'clients',
-      label: 'Clientes activos',
-      value: activeClientsCount,
-      sub: 'Clientes en base de datos',
-      icon: 'users',
-      accent: 'blue',
-      screen: 'clientes',
-    },
+    { key: 'sales', label: 'Ventas de hoy', value: fmtMXN(todaySalesSum), sub: `${todayTransactions} transacciones${todayDevueltas > 0 ? ` · ${todayDevueltas} devueltas` : ''}`, icon: 'cash', accent: 'green', screen: 'caja' },
+    { key: 'stock', label: 'Alertas de stock bajo', value: lowStockCount, sub: lowStockList.length > 0 ? (lowStockList.map(p => p.name.split(' ')[0]).join(', ').slice(0, 42) + '...') : 'Sin alertas de stock', icon: 'alert', accent: 'amber', screen: 'inventario' },
+    { key: 'credit', label: 'Notas a crédito pendientes', value: pendingCreditsCount, sub: `Por cobrar ${fmtMXN(pendingCreditsSum)}`, icon: 'credit', accent: 'red', screen: 'credito' },
+    { key: 'clients', label: 'Clientes activos', value: activeClientsCount, sub: 'Clientes en base de datos', icon: 'users', accent: 'blue', screen: 'clientes' },
   ];
 
   const accentMap: Record<string, { bg: string; fg: string }> = {
@@ -496,23 +219,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNav }) => {
               <div
                 key={c.key}
                 className="card"
-                style={{
-                  padding: 20,
-                  position: 'relative',
-                  cursor: 'pointer',
-                  transition: 'transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease',
-                }}
+                style={{ padding: 20, position: 'relative', cursor: 'pointer', transition: 'transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease' }}
                 onClick={() => onNav(c.screen)}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.transform = 'translateY(-2px)';
-                  e.currentTarget.style.boxShadow = 'var(--shadow-md)';
-                  e.currentTarget.style.borderColor = 'var(--green)';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.transform = 'none';
-                  e.currentTarget.style.boxShadow = 'none';
-                  e.currentTarget.style.borderColor = '';
-                }}
+                onMouseEnter={(e) => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = 'var(--shadow-md)'; e.currentTarget.style.borderColor = 'var(--green)'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = 'none'; e.currentTarget.style.borderColor = ''; }}
               >
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14 }}>
                   <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--muted)' }}>{c.label}</div>
@@ -527,7 +237,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNav }) => {
           })}
         </div>
 
-        {/* Acciones rápidas (Q6) */}
+        {/* Acciones rápidas */}
         <div className="card" style={{ padding: 18, marginBottom: 24 }}>
           <div className="h3" style={{ marginBottom: 14 }}>Acciones rápidas</div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 12 }}>
@@ -537,8 +247,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNav }) => {
               { label: 'Inventario', icon: 'box', screen: 'inventario' },
               { label: 'Clientes', icon: 'users', screen: 'clientes' },
             ].map(a => (
-              <button key={a.screen} type="button" className="btn btn-secondary"
-                onClick={() => onNav(a.screen)}
+              <button key={a.screen} type="button" className="btn btn-secondary" onClick={() => onNav(a.screen)}
                 style={{ height: 64, display: 'flex', flexDirection: 'column', gap: 6, fontSize: 13 }}>
                 <Icon name={a.icon} size={22} color="var(--green-2)" />
                 {a.label}
@@ -552,9 +261,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNav }) => {
           <div className="card" style={{ padding: 22 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 18 }}>
               <div>
-                <div className="h3">
-                  {timeRange === 'semana' ? 'Ventas de la semana' : timeRange === 'mes' ? 'Ventas del mes' : 'Ventas del año'}
-                </div>
+                <div className="h3">{timeRange === 'semana' ? 'Ventas de la semana' : timeRange === 'mes' ? 'Ventas del mes' : 'Ventas del año'}</div>
                 <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
                   {timeRange === 'semana' ? 'Registro semanal de transacciones' : timeRange === 'mes' ? 'Registro agrupado por semanas' : 'Registro anual agrupado por meses'}
                 </div>
@@ -564,21 +271,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNav }) => {
                   const labelMap = { semana: 'Semana', mes: 'Mes', ano: 'Año' };
                   const active = timeRange === r;
                   return (
-                    <button
-                      key={r}
-                      onClick={() => setTimeRange(r)}
-                      style={{
-                        padding: '6px 12px',
-                        fontSize: 12,
-                        fontWeight: 600,
-                        borderRadius: 5,
-                        background: active ? 'var(--surface)' : 'transparent',
-                        color: active ? 'var(--ink)' : 'var(--muted)',
-                        boxShadow: active ? 'var(--shadow-sm)' : 'none',
-                        border: 0,
-                        cursor: 'pointer'
-                      }}
-                    >
+                    <button key={r} onClick={() => setTimeRange(r)}
+                      style={{ padding: '6px 12px', fontSize: 12, fontWeight: 600, borderRadius: 5, background: active ? 'var(--surface)' : 'transparent', color: active ? 'var(--ink)' : 'var(--muted)', boxShadow: active ? 'var(--shadow-sm)' : 'none', border: 0, cursor: 'pointer' }}>
                       {labelMap[r]}
                     </button>
                   );
@@ -593,11 +287,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNav }) => {
               </span>
             </div>
 
-            {/* Chart */}
             {chartLoading ? (
-              <div style={{ height: 180, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, color: 'var(--muted)' }}>
-                Cargando gráfico...
-              </div>
+              <div style={{ height: 180, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, color: 'var(--muted)' }}>Cargando gráfico...</div>
             ) : !chart || totalWeeklySalesSum === 0 ? (
               <div style={{ height: 180, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8, color: 'var(--muted)' }}>
                 <Icon name="report" size={24} color="var(--muted)" />
@@ -649,7 +340,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNav }) => {
             <div style={{ display: 'grid', gap: 10 }}>
               {lowStockList.length === 0 ? (
                 <div style={{ padding: '40px 20px', textAlign: 'center', color: 'var(--muted)', border: '2px dashed var(--line)', borderRadius: 10, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
-                  <Icon name="check" size={24} color="var(--ok)" />
+                  <Icon name="check" size={24} color="var(--green)" />
                   <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)' }}>Todo en orden</div>
                   <div style={{ fontSize: 11 }}>No hay productos con stock bajo.</div>
                 </div>
@@ -664,10 +355,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNav }) => {
                           <div style={{ fontWeight: 600, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</div>
                           <div style={{ fontSize: 11, color: 'var(--muted)' }}>{p.unit}</div>
                         </div>
-                        <span className={`badge ${critical ? 'red' : 'amber'}`}>
-                          <span className="dot"></span>
-                          {p.stock}/{p.min}
-                        </span>
+                        <span className={`badge ${critical ? 'red' : 'amber'}`}><span className="dot"></span>{p.stock}/{p.min}</span>
                       </div>
                       <div style={{ height: 4, background: 'var(--line-2)', borderRadius: 999 }}>
                         <div style={{ height: '100%', width: `${Math.min(pct, 100)}%`, background: critical ? 'var(--red)' : 'var(--amber)', borderRadius: 999 }}></div>
@@ -710,7 +398,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNav }) => {
                       <td style={{ padding: '12px 0', borderBottom: '1px solid var(--line-2)' }} className="num">{r.folio}</td>
                       <td style={{ padding: '12px 0', borderBottom: '1px solid var(--line-2)' }}>{r.cliente}</td>
                       <td style={{ padding: '12px 0', borderBottom: '1px solid var(--line-2)' }}>
-                        <span className={`badge ${r.tipo === 'Crédito' ? 'amber' : 'ok'}`}><span className="dot"></span>{r.tipo}</span>
+                        <span className={`badge ${r.tipo === 'Crédito' ? 'amber' : 'green'}`}><span className="dot"></span>{r.tipo}</span>
                       </td>
                       <td style={{ padding: '12px 0', textAlign: 'right', color: 'var(--muted)', borderBottom: '1px solid var(--line-2)' }} className="num">{r.hora}</td>
                       <td style={{ padding: '12px 0', textAlign: 'right', fontWeight: 600, borderBottom: '1px solid var(--line-2)' }} className="num">{fmtMXN(r.total)}</td>
@@ -721,24 +409,23 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNav }) => {
             )}
           </div>
 
-          <div className="card" style={{ padding: 22, background: overdueCredits.length > 0 ? 'linear-gradient(160deg, oklch(0.97 0.04 25) 0%, var(--surface) 60%)' : 'linear-gradient(160deg, var(--ok-soft) 0%, var(--surface) 60%)' }}>
+          <div className="card" style={{ padding: 22, background: overdueCount > 0 ? 'linear-gradient(160deg, oklch(0.97 0.04 25) 0%, var(--surface) 60%)' : 'linear-gradient(160deg, var(--green-soft) 0%, var(--surface) 60%)' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
-              <Icon name={overdueCredits.length > 0 ? 'alert' : 'check'} size={18} color={overdueCredits.length > 0 ? 'var(--red)' : 'var(--ok)'} />
-              <div className="h3" style={{ color: overdueCredits.length > 0 ? 'var(--red)' : 'var(--ok-2)' }}>
-                {overdueCredits.length > 0 ? 'Atención requerida' : 'Créditos al corriente'}
+              <Icon name={overdueCount > 0 ? 'alert' : 'check'} size={18} color={overdueCount > 0 ? 'var(--red)' : 'var(--green)'} />
+              <div className="h3" style={{ color: overdueCount > 0 ? 'var(--red)' : 'var(--green-2)' }}>
+                {overdueCount > 0 ? 'Atención requerida' : 'Créditos al corriente'}
               </div>
             </div>
-            
-            {overdueCredits.length === 0 ? (
+
+            {overdueCount === 0 ? (
               <p style={{ fontSize: 13, color: 'var(--ink-2)', marginTop: 8, lineHeight: 1.5 }}>
                 No hay notas de crédito vencidas en el sistema. Todos los saldos pendientes de tus clientes están al corriente.
               </p>
             ) : (
               <>
                 <p style={{ fontSize: 13, color: 'var(--ink-2)', marginTop: 8, marginBottom: 18, lineHeight: 1.5 }}>
-                  Hay <strong>{overdueCredits.length} notas a crédito vencidas</strong>. Contacta a los clientes para gestionar el pago.
+                  Hay <strong>{overdueCount} notas a crédito vencidas</strong>. Contacta a los clientes para gestionar el pago.
                 </p>
-
                 <div style={{ display: 'grid', gap: 10, marginBottom: 18 }}>
                   {overdueCredits.slice(0, 3).map((c, i) => (
                     <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: 12, background: 'var(--surface)', borderRadius: 8, border: '1px solid var(--line)' }}>
@@ -753,7 +440,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNav }) => {
               </>
             )}
 
-            <button className="btn btn-secondary btn-block" style={{ marginTop: overdueCredits.length === 0 ? 20 : 0 }} onClick={() => onNav('credito')}>
+            <button className="btn btn-secondary btn-block" style={{ marginTop: overdueCount === 0 ? 20 : 0 }} onClick={() => onNav('credito')}>
               <Icon name="credit" size={16} />
               Ver panel de créditos
             </button>

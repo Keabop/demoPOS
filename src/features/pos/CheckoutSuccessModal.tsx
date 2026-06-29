@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { createPortal } from 'react-dom';
 import type { Producto } from '../../types';
 import { Icon } from '../../components/Icon';
 import { fmtMXN } from '../../lib/format';
 import { useConfig } from '../config/ConfigContext';
 import { toast } from '../../lib/toast';
+import { TicketTermico } from './TicketTermico';
+import { ticketDesdeVentaNueva, ticketHTML } from './ticketModel';
+import { imprimirTicket } from '../../lib/printing/qz';
 
 interface CheckoutSuccessModalProps {
   isOpen: boolean;
@@ -12,19 +14,19 @@ interface CheckoutSuccessModalProps {
   folio: string;
   subtotal: number;
   iva: number;
+  ieps?: number;
   total: number;
   vendedorNombre: string;
   clientName?: string | null;
   clientPhone?: string | null;
-  cartItems: Array<Producto & { qty: number }>; // contains products with quantity
+  clientNumero?: number | null;
+  cartItems: Array<Producto & { qty: number; precioVendido?: number }>; // contains products with quantity
   onSendWhatsApp: (phone: string) => Promise<boolean>;
   metodoPago: string;
   efectivoRecibido?: number | null;
   cambio?: number | null;
-}
-
-interface CartItemWithQty extends Producto {
-  qty: number;
+  esCredito?: boolean;
+  onImprimirPagare?: (modo: 'descargar' | 'imprimir') => void;
 }
 
 export const CheckoutSuccessModal: React.FC<CheckoutSuccessModalProps> = ({
@@ -32,14 +34,19 @@ export const CheckoutSuccessModal: React.FC<CheckoutSuccessModalProps> = ({
   onClose,
   folio,
   subtotal,
+  ieps = 0,
   total,
+  vendedorNombre,
   clientName,
   clientPhone,
+  clientNumero = null,
   cartItems,
   onSendWhatsApp,
   metodoPago,
   efectivoRecibido = null,
   cambio = null,
+  esCredito = false,
+  onImprimirPagare,
 }) => {
   const { config } = useConfig();
   const [phone, setPhone] = useState('');
@@ -58,14 +65,26 @@ export const CheckoutSuccessModal: React.FC<CheckoutSuccessModalProps> = ({
 
   if (!isOpen) return null;
 
-  const paymentLabels: Record<string, string> = {
-    efectivo: 'EFECTIVO',
-    tarjeta: 'TARJETA DE CRÉDITO',
-    debito: 'TARJETA DE DÉBITO',
-    transferencia: 'TRANSFERENCIA BANCARIA',
-    credito: 'CRÉDITO'
-  };
-  const paymentLabel = paymentLabels[metodoPago] || metodoPago.toUpperCase();
+  const ticketData = ticketDesdeVentaNueva(
+    {
+      folio,
+      clientName: clientName ?? null,
+      clientNumero: clientNumero ?? null,
+      cartItems: cartItems.map((it) => ({
+        qty: Number(it.qty),
+        nombre: it.nombre,
+        precioVendido: Number(it.precioVendido ?? it.precio_publico ?? 0),
+      })),
+      subtotal,
+      ieps,
+      total,
+      metodoPago,
+      efectivoRecibido,
+      cambio,
+    },
+    vendedorNombre,
+    new Date().toLocaleString('es-MX', { hour12: false }),
+  );
 
   const handleSendWhatsApp = async () => {
     if (!phone) {
@@ -130,14 +149,14 @@ export const CheckoutSuccessModal: React.FC<CheckoutSuccessModalProps> = ({
     width: '64px',
     height: '64px',
     borderRadius: '50%',
-    backgroundColor: 'var(--ok-soft)',
+    backgroundColor: 'var(--green-soft)',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    color: 'var(--ok)',
+    color: 'var(--green)',
     margin: '0 auto 8px auto',
-    border: '1px solid var(--ok-line)',
-    boxShadow: '0 8px 16px oklch(0.56 0.13 150 / 0.16)',
+    border: '1px solid var(--green-line)',
+    boxShadow: '0 8px 16px rgba(oklch(0.58 0.13 145 / 0.08))',
   };
 
   const headerStyle: React.CSSProperties = {
@@ -183,7 +202,7 @@ export const CheckoutSuccessModal: React.FC<CheckoutSuccessModalProps> = ({
   const getWhatsAppButtonColor = () => {
     switch (sendStatus) {
       case 'success':
-        return 'var(--ok)';
+        return 'var(--green)';
       case 'error':
         return 'var(--red)';
       default:
@@ -216,49 +235,10 @@ export const CheckoutSuccessModal: React.FC<CheckoutSuccessModalProps> = ({
           from { transform: scale(0.95); opacity: 0; }
           to { transform: scale(1); opacity: 1; }
         }
-        
-        @media screen {
-          .print-only-ticket {
-            display: none !important;
-          }
-        }
-        
-        @media print {
-          /* Hide all body children except our print portal ticket */
-          body > *:not(.print-only-ticket) {
-            display: none !important;
-          }
-          html, body {
-            background: #fff !important;
-            color: #000 !important;
-            margin: 0 !important;
-            padding: 0 !important;
-          }
-          /* Show and format print ticket only */
-          .print-only-ticket {
-            display: block !important;
-            position: relative !important;
-            width: 80mm !important;
-            max-width: 80mm !important;
-            padding: 4mm !important;
-            margin: 0 auto !important;
-            font-family: 'Courier New', Courier, monospace !important;
-            font-size: 12px !important;
-            line-height: 1.3 !important;
-            color: #000 !important;
-            background: #fff !important;
-            page-break-inside: avoid !important;
-            break-inside: avoid !important;
-          }
-          @page {
-            size: 80mm auto;
-            margin: 0;
-          }
-        }
       `}</style>
 
       {/* Screen Modal Card */}
-      <div style={cardStyle}>
+      <div role="dialog" aria-modal="true" style={cardStyle}>
         {/* Close Button in corner */}
         <button
           onClick={onClose}
@@ -284,7 +264,7 @@ export const CheckoutSuccessModal: React.FC<CheckoutSuccessModalProps> = ({
           <div style={iconWrapperStyle}>
             <Icon name="check" size={32} strokeWidth={2.5} />
           </div>
-          <h2 style={headerStyle}>¡Venta Realizada con Éxito!</h2>
+          <h2 style={headerStyle}>{esCredito ? 'Venta a Crédito Registrada' : '¡Venta Realizada con Éxito!'}</h2>
         </div>
 
         {/* Details Box */}
@@ -295,7 +275,7 @@ export const CheckoutSuccessModal: React.FC<CheckoutSuccessModalProps> = ({
           </div>
           <div style={summaryRowStyle}>
             <span style={{ color: 'var(--muted)', fontWeight: 500 }}>Total Pagado</span>
-            <span className="num" style={{ fontSize: '18px', fontWeight: 800, color: 'var(--ok-2)' }}>
+            <span className="num" style={{ fontSize: '18px', fontWeight: 800, color: 'var(--green-2)' }}>
               {fmtMXN(total)}
             </span>
           </div>
@@ -342,108 +322,49 @@ export const CheckoutSuccessModal: React.FC<CheckoutSuccessModalProps> = ({
 
         {/* Action Buttons */}
         <div style={{ display: 'flex', gap: '12px' }}>
-          <button
-            onClick={() => window.print()}
-            className="btn btn-secondary"
-            style={{ flex: 1, height: '48px', justifyContent: 'center' }}
-          >
-            <Icon name="printer" size={18} />
-            Imprimir Ticket
-          </button>
-          
-          <button
-            onClick={onClose}
-            className="btn btn-primary"
-            style={{ flex: 1, height: '48px', justifyContent: 'center' }}
-          >
-            Nueva Venta
-          </button>
+          {esCredito ? (
+            <>
+              <button
+                onClick={() => onImprimirPagare?.('descargar')}
+                className="btn btn-secondary"
+                style={{ flex: 1, height: '48px', justifyContent: 'center' }}
+              >
+                <Icon name="file" size={18} />
+                Descargar pagaré
+              </button>
+              <button
+                onClick={() => onImprimirPagare?.('imprimir')}
+                className="btn btn-primary"
+                style={{ flex: 1, height: '48px', justifyContent: 'center' }}
+              >
+                <Icon name="printer" size={18} />
+                Imprimir pagaré
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                onClick={() => { void imprimirTicket(ticketHTML(ticketData, config.anchoTicket), config.anchoTicket, () => window.print()); }}
+                className="btn btn-secondary"
+                style={{ flex: 1, height: '48px', justifyContent: 'center' }}
+              >
+                <Icon name="printer" size={18} />
+                Imprimir Ticket
+              </button>
+              <button
+                onClick={onClose}
+                className="btn btn-primary"
+                style={{ flex: 1, height: '48px', justifyContent: 'center' }}
+              >
+                Nueva Venta
+              </button>
+            </>
+          )}
         </div>
       </div>
 
-      {/* Ticket Container (Rendered outside #root using portal, visible only during printing) */}
-      {createPortal(
-        <div className="print-only-ticket">
-          <div style={{ textAlign: 'center', marginBottom: '15px' }}>
-            <h1 style={{ margin: '0 0 4px 0', fontSize: '20px', fontWeight: 'bold', letterSpacing: '1px' }}>{config.nombre}</h1>
-            <div style={{ fontSize: '10px', textTransform: 'uppercase' }}>{config.descripcion}</div>
-            <div style={{ fontSize: '9px', marginTop: '4px' }}>{config.direccion}</div>
-            <div style={{ fontSize: '9px' }}>{config.ciudad} - Tel: {config.telefono}</div>
-          </div>
-
-          <div style={{ borderTop: '1px dashed #000', borderBottom: '1px dashed #000', padding: '6px 0', marginBottom: '10px', fontSize: '10px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span>FOLIO: {folio}</span>
-              <span>FECHA: {new Date().toLocaleString('es-MX', { hour12: false })}</span>
-            </div>
-            {clientName && <div>CLIENTE: {clientName.toUpperCase()}</div>}
-            <div>FORMA DE PAGO: {paymentLabel}</div>
-          </div>
-
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '10px', marginBottom: '10px' }}>
-            <thead>
-              <tr style={{ borderBottom: '1px solid #000' }}>
-                <th style={{ textAlign: 'left', paddingBottom: '4px', width: '45%' }}>PRODUCTO</th>
-                <th style={{ textAlign: 'center', paddingBottom: '4px', width: '20%' }}>CANT</th>
-                <th style={{ textAlign: 'right', paddingBottom: '4px', width: '15%' }}>PRECIO</th>
-                <th style={{ textAlign: 'right', paddingBottom: '4px', width: '20%' }}>TOTAL</th>
-              </tr>
-            </thead>
-            <tbody>
-              {cartItems.map((item: CartItemWithQty, idx) => {
-                const price = Number(item.precio_publico || 0);
-                const qty = Number(item.qty || 0);
-                const sub = price * qty;
-                return (
-                  <tr key={idx} style={{ verticalAlign: 'top' }}>
-                    <td style={{ padding: '4px 0', wordBreak: 'break-word' }}>
-                      {item.nombre}
-                    </td>
-                    <td style={{ textAlign: 'center', padding: '4px 0' }}>
-                      {qty} {item.unidad}
-                    </td>
-                    <td style={{ textAlign: 'right', padding: '4px 0' }}>
-                      {fmtMXN(price)}
-                    </td>
-                    <td style={{ textAlign: 'right', padding: '4px 0' }}>
-                      {fmtMXN(sub)}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-
-          <div style={{ borderTop: '1px dashed #000', paddingTop: '6px', fontSize: '10px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '3px' }}>
-              <span>SUBTOTAL:</span>
-              <span>{fmtMXN(subtotal)}</span>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', fontSize: '12px', borderTop: '1px solid #000', paddingTop: '4px', marginTop: '4px' }}>
-              <span>TOTAL:</span>
-              <span>{fmtMXN(total)}</span>
-            </div>
-            {efectivoRecibido != null && (
-              <>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '4px' }}>
-                  <span>EFECTIVO RECIBIDO:</span>
-                  <span>{fmtMXN(efectivoRecibido)}</span>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold' }}>
-                  <span>CAMBIO:</span>
-                  <span>{fmtMXN(Math.max(0, cambio ?? 0))}</span>
-                </div>
-              </>
-            )}
-          </div>
-
-          <div style={{ textAlign: 'center', marginTop: '25px', fontSize: '9px', borderTop: '1px solid #000', paddingTop: '8px' }}>
-            <div>¡GRACIAS POR SU COMPRA!</div>
-            <div style={{ marginTop: '2px' }}>CONSERVE ESTE TICKET PARA CUALQUIER ACLARACIÓN</div>
-          </div>
-        </div>,
-        document.body
-      )}
+      {/* Ticket de respaldo (window.print); QZ usa el mismo ticketHTML */}
+      <TicketTermico data={ticketData} anchoMm={config.anchoTicket} />
     </div>
   );
 };

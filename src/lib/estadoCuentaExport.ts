@@ -21,6 +21,8 @@ export interface NotaExport {
   fecha: string;
   fecVen: string;
   total: number;
+  capital: number;
+  interes: number;
   saldo: number;
   diasAtraso: number;
   status: StatusNota;
@@ -29,7 +31,7 @@ export interface NotaExport {
 
 export interface EstadoCuentaModel {
   cliente: { id: string; nombre: string; rancho?: string; telefono?: string };
-  kpis: { diasCredito: number; totalVencido: number; totalNotas: number; saldoPorCobrar: number };
+  kpis: { diasCredito: number; totalVencido: number; totalNotas: number; saldoPorCobrar: number; totalInteres: number };
   notas: NotaExport[];
   /** Fecha legible de generación, pasada desde el componente (evita Date en módulos puros). */
   generadoEn: string;
@@ -82,25 +84,27 @@ export async function exportarEstadoCuentaPDF(m: EstadoCuentaModel, modo: ModoEn
   doc.text(`Generado: ${m.generadoEn}`, 40, y);
   y += 16;
   doc.text(
-    `Días de crédito: ${m.kpis.diasCredito}    Total vencido: ${fmtMXN(m.kpis.totalVencido)}    Total notas: ${fmtMXN(m.kpis.totalNotas)}`,
+    `Días de crédito: ${m.kpis.diasCredito}    Total vencido: ${fmtMXN(m.kpis.totalVencido)}    Interés acumulado: ${fmtMXN(m.kpis.totalInteres)}    Total notas: ${fmtMXN(m.kpis.totalNotas)}`,
     40,
     y,
   );
 
   autoTable(doc, {
     startY: y + 14,
-    head: [['DÍAS ATRASO', 'REMISIÓN', 'FECHA', 'FEC. VEN.', 'SALDO', 'STATUS']],
+    head: [['DÍAS ATRASO', 'REMISIÓN', 'FECHA', 'FEC. VEN.', 'CAPITAL', 'INTERÉS', 'SALDO', 'STATUS']],
     body: m.notas.map((n) => [
       String(n.diasAtraso),
       n.remision,
       n.fecha,
       n.fecVen,
+      fmtMXN(n.capital),
+      n.interes > 0 ? fmtMXN(n.interes) : '—',
       fmtMXN(n.saldo),
       n.status,
     ]),
     styles: { fontSize: 8, cellPadding: 4 },
     headStyles: { fillColor: [57, 145, 102], halign: 'left' },
-    columnStyles: { 4: { halign: 'right' } },
+    columnStyles: { 4: { halign: 'right' }, 5: { halign: 'right' }, 6: { halign: 'right' } },
   });
 
   const finalY = (doc as unknown as { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY ?? y + 40;
@@ -118,6 +122,8 @@ export function exportarEstadoCuentaExcel(m: EstadoCuentaModel): void {
     Fecha: n.fecha,
     'Fec. Ven.': n.fecVen,
     Total: n.total,
+    Capital: n.capital,
+    Interés: n.interes,
     Saldo: n.saldo,
     Status: n.status,
   }));
@@ -130,6 +136,7 @@ export function exportarEstadoCuentaExcel(m: EstadoCuentaModel): void {
       ['Cliente', m.cliente.nombre],
       ['Días de crédito', m.kpis.diasCredito],
       ['Total vencido', m.kpis.totalVencido],
+      ['Interés acumulado', m.kpis.totalInteres],
       ['Total notas', m.kpis.totalNotas],
       ['Saldo por cobrar', m.kpis.saldoPorCobrar],
       ['Generado', m.generadoEn],

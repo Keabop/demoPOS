@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Login } from './features/auth/Login';
 import { POS } from './features/pos/POS';
 import { MobileScanner } from './features/pos/MobileScanner';
@@ -13,13 +13,21 @@ import { Sidebar } from './components/Sidebar';
 import { Icon } from './components/Icon';
 import { ToastHost } from './components/ToastHost';
 import { DemoBanner } from './components/DemoBanner';
+import { TourGuiado } from './components/TourGuiado';
 import { ConfigProvider } from './features/config/ConfigContext';
 import { Configuracion } from './features/config/Configuracion';
 import { getConfig } from './lib/configNegocio';
 import { AuthProvider, useAuth } from './features/auth/AuthContext';
+import { can } from './features/auth/useCan';
+import { pantallaInicial, itemsVisibles } from './config/navegacion';
+import { useScreenHistory } from './hooks/useScreenHistory';
+import { useGlobalShortcuts } from './hooks/useGlobalShortcuts';
+import { AtajosHelp } from './components/AtajosHelp';
+import type { Capacidad } from './lib/capacidades';
 import { Reportes } from './features/reportes/Reportes';
 import { Precios } from './features/inventario/Precios';
 import { Usuarios } from './features/admin/Usuarios';
+import { Bitacora } from './features/admin/Bitacora';
 import { Compras } from './features/compras/Compras';
 import './App.css';
 
@@ -56,6 +64,40 @@ function AppContent() {
 
   const [screen, setScreen] = useState('login'); // login | dashboard | pos | clientes | inventario | credito | reportes | precios
   const [prevProfileId, setPrevProfileId] = useState<string | null>(null);
+  // Keep-alive: pantallas ya visitadas (montadas). Se ocultan en vez de desmontarse
+  // para preservar su estado al navegar. Se reinicia al cambiar de usuario/logout.
+  const [mounted, setMounted] = useState<string[]>([]);
+
+  // Sincroniza la pantalla con el historial del navegador: `navigate` reemplaza a
+  // `setScreen` en la navegación del usuario para que Atrás/Adelante funcionen.
+  const navigate = useScreenHistory(screen, setScreen);
+
+  // R8: capa de atajos de teclado a nivel app. Debe ir antes de los returns
+  // tempranos (login/loading) para respetar las reglas de hooks.
+  const [ayudaAbierta, setAyudaAbierta] = useState(false);
+  const itemsMenu = useMemo(
+    () => (profile ? itemsVisibles((c) => can(profile, c)) : []),
+    [profile]
+  );
+  useGlobalShortcuts({
+    items: itemsMenu,
+    navigate,
+    onAbrirAyuda: () => setAyudaAbierta(true),
+    habilitado: !!profile,
+  });
+
+  // Keep-alive: registra la pantalla activa como montada (lazy-mount al 1er acceso).
+  useEffect(() => {
+    if (!profile) return;
+    setMounted((prev) => (prev.includes(screen) ? prev : [...prev, screen]));
+  }, [screen, profile]);
+
+  // Tutorial guiado (driver.js): el tour cambia de pantalla disparando 'demo:goto'.
+  useEffect(() => {
+    const h = (e: Event) => navigate((e as CustomEvent).detail as string);
+    window.addEventListener('demo:goto', h as EventListener);
+    return () => window.removeEventListener('demo:goto', h as EventListener);
+  }, [navigate]);
 
   // Barra de estado (theme-color) que combina con la pantalla: oscura cuando el
   // menu movil esta abierto, crema cuando esta cerrado. Evita el bloque blanco.
@@ -74,19 +116,19 @@ function AppContent() {
   // 2. Automatically change active screen when profile is loaded (React 18/19 state transition pattern during render)
   if (profile && profile.id !== prevProfileId) {
     setPrevProfileId(profile.id);
-    if (profile.rol === 'admin') {
-      setScreen('dashboard');
-    } else if (profile.rol === 'vendedor') {
-      setScreen('pos');
-    } else if (profile.rol === 'visitante') {
-      setScreen('precios');
-    }
+    setMounted([]); // descarta las pantallas montadas del usuario anterior
+    const inicial = pantallaInicial((c) => can(profile, c));
+    setScreen(inicial);
+    // Ancla la entrada base del historial a la pantalla inicial (replace, no push)
+    // para que el botón Atrás pueda regresar a ella tras navegar.
+    window.history.replaceState({ screen: inicial }, '');
   }
 
   // Reset states if logged out
   if (!profile && prevProfileId !== null) {
     setPrevProfileId(null);
     setScreen('login');
+    setMounted([]); // libera las pantallas montadas al cerrar sesión
   }
 
   // If this is a synchronized mobile scanner, bypass login/sidebar.
@@ -106,41 +148,50 @@ function AppContent() {
     return <Login />;
   }
 
-  // Map the application roles to the sidebar roles
-  const sidebarRole = profile.rol === 'visitante' ? 'usuario' : profile.rol;
-
-  const renderScreen = () => {
-    switch (screen) {
+  // Nodo de cada pantalla (mismo switch + guarda por capacidad que antes). Se
+  // invoca por cada pantalla MONTADA para el keep-alive (ver más abajo).
+  const screenNode = (s: string, activo: boolean): React.ReactNode => {
+    // Guarda por capacidad: si el perfil no la tiene, cae a la Lista de Precios.
+    const guard = (cap: Capacidad, el: React.ReactNode) => (can(profile, cap) ? el : <Precios activo={activo} />);
+    switch (s) {
       case 'dashboard':
-        return <Dashboard onNav={setScreen} />;
+        return guard('ver_reportes', <Dashboard onNav={navigate} activo={activo} />);
       case 'pos':
-        return <POS vendedorId={profile.id} vendedorNombre={profile.nombre} onNav={setScreen} />;
+        return guard('vender', <POS vendedorId={profile.id} vendedorNombre={profile.nombre} onNav={navigate} activo={activo} />);
       case 'inventario':
-        return <Catalogo />;
+        return guard('gestionar_inventario', <Catalogo activo={activo} />);
       case 'proveedores':
-        return <Compras vendedorId={profile.id} />;
+        return guard('gestionar_compras', <Compras vendedorId={profile.id} activo={activo} />);
       case 'caja':
-        return <Caja />;
-      
+        return guard('manejar_caja', <Caja activo={activo} />);
+
       case 'clientes':
-        return <Clientes onNav={setScreen} />;
+        return guard('gestionar_clientes', <Clientes onNav={navigate} activo={activo} />);
       case 'historial':
-        return <HistorialClientes />;
+        return guard('ver_estados_cuenta', <HistorialClientes activo={activo} />);
       case 'credito':
-        return <CreditosList />;
+        return guard('ver_estados_cuenta', <CreditosList activo={activo} />);
       case 'historial-ventas':
-        return <HistorialVentas rol={profile.rol} vendedorId={profile.id} />;
+        return guard('vender', <HistorialVentas rol={profile.rol} vendedorId={profile.id} activo={activo} />);
       case 'reportes':
-        return <Reportes />;
+        return guard('ver_reportes', <Reportes activo={activo} />);
       case 'usuarios':
-        return profile.rol === 'admin' ? <Usuarios /> : <Precios />;
+        return guard('gestionar_usuarios', <Usuarios />);
       case 'configuracion':
-        return profile.rol === 'admin' ? <Configuracion /> : <Precios />;
+        return guard('configurar_sistema', <Configuracion />);
+      case 'auditoria':
+        return guard('ver_auditoria', <Bitacora />);
       case 'precios':
       default:
-        return <Precios />;
+        return <Precios activo={activo} />;
     }
   };
+
+  // Keep-alive: las pantallas visitadas se mantienen montadas y las inactivas se
+  // ocultan con CSS (en vez de desmontarse) para conservar su estado al navegar.
+  // La activa siempre está en la lista a renderizar (evita un flash antes de que
+  // el efecto agregue la pantalla al conjunto).
+  const screensToRender = mounted.includes(screen) ? mounted : [...mounted, screen];
 
   return (
     <div
@@ -148,10 +199,18 @@ function AppContent() {
       className="app"
       onClick={() => document.querySelector('.app')?.classList.remove('sidebar-open')}
     >
-      <Sidebar role={sidebarRole} screen={screen} onNav={setScreen} onLogout={logout} />
+      <Sidebar screen={screen} onNav={navigate} onLogout={logout} />
       <main className="main">
-        {renderScreen()}
+        {screensToRender.map((s) => (
+          // display:contents en la activa → el root del screen queda como hijo
+          // flex directo de .main (layout idéntico al actual); display:none oculta
+          // las inactivas manteniéndolas montadas con su estado vivo.
+          <div key={s} data-keepalive={s} style={{ display: s === screen ? 'contents' : 'none' }}>
+            {screenNode(s, s === screen)}
+          </div>
+        ))}
       </main>
+      <AtajosHelp open={ayudaAbierta} onClose={() => setAyudaAbierta(false)} />
     </div>
   );
 }
@@ -165,6 +224,7 @@ function App() {
         <div style={{ paddingTop: 22 }}>
           <AppContent />
         </div>
+        <TourGuiado />
         <ToastHost />
       </AuthProvider>
     </ConfigProvider>

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render } from '@testing-library/react';
 import { CheckoutSuccessModal } from './CheckoutSuccessModal';
 
 // Mock the Icon component since it might render SVGs or Lucide icons
@@ -38,22 +38,16 @@ describe('CheckoutSuccessModal Component', () => {
     metodoPago: 'tarjeta'
   };
 
-  it('renders payment method label correctly on printed ticket', () => {
+  it('renderiza el ticket (portal) con método de pago y cliente', () => {
     render(<CheckoutSuccessModal {...defaultProps} />);
-
-    // Should display FORMA DE PAGO: TARJETA DE CRÉDITO
-    expect(screen.getByText('FORMA DE PAGO: TARJETA DE CRÉDITO')).toBeInTheDocument();
-    
-    // Should display CLIENTE in uppercase
-    expect(screen.getByText('CLIENTE: JUAN CLIENTE')).toBeInTheDocument();
-    
-    // Should NOT display VENDEDOR
-    expect(screen.queryByText(/VENDEDOR:/i)).toBeNull();
+    // El ticket se inyecta vía dangerouslySetInnerHTML en el portal de impresión.
+    expect(document.body.innerHTML).toContain('TARJETA DE CRÉDITO');
+    expect(document.body.innerHTML).toContain('Juan Cliente');
+    expect(document.body.innerHTML).toContain('V-2026-123456'); // folio
   });
 
-  it('handles custom fallback for undefined/unknown payment method', () => {
+  it('método de pago desconocido cae a su nombre en mayúsculas', () => {
     render(<CheckoutSuccessModal {...defaultProps} metodoPago="otro_metodo" />);
-
-    expect(screen.getByText('FORMA DE PAGO: OTRO_METODO')).toBeInTheDocument();
+    expect(document.body.innerHTML).toContain('OTRO_METODO');
   });
 });

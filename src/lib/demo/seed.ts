@@ -17,7 +17,7 @@
 //    (el trigger ya baja saldo, salda la venta si procede e inserta el movimiento de caja).
 //  - iva=0 y total=subtotal en el historial (AGROMAR opera sin IVA; el IVA se demuestra en
 //    ventas NUEVAS desde el POS, con configuracion.iva_default=0.16).
-export const SEED_VERSION = '1.0.1';
+export const SEED_VERSION = '2.0.0';
 
 export const DEMO_SEED_SQL = /* sql */ `
 -- ===== Sesión: el vendedor activo durante la siembra es el técnico/mostrador (0002) =====
@@ -311,6 +311,16 @@ INSERT INTO movimientos_caja(vendedor_id,tipo,monto,descripcion,metodo,categoria
 -- ===== Apertura de caja de HOY (turno abierto en la pantalla Caja) =====
 INSERT INTO movimientos_caja(vendedor_id,tipo,monto,descripcion,metodo,categoria,fecha) VALUES
  ('00000000-0000-0000-0000-000000000002','apertura',2000,'Apertura de turno','efectivo','caja',now()-interval '3 hours');
+
+-- ===== Precios por nivel (columnas G1): crédito ~6% sobre público; subdistribuidor = mayoreo =====
+-- (las ventas a crédito y el doble precio del catálogo necesitan precio_credito != 0)
+UPDATE productos SET precio_credito = round(precio_publico * 1.06, 2),
+                     precio_subdistribuidor = precio_mayoreo
+WHERE precio_credito = 0;
+
+-- ===== Continuar las secuencias de folio tras lo sembrado (ventas nuevas → V-0015…, abonos → P-0003…) =====
+SELECT setval('seq_folio_venta', 14);
+SELECT setval('seq_folio_abono', 2);
 
 -- ===== Evaluar morosos (marca c0004 como bloqueada para crédito) =====
 SELECT fn_evaluar_clientes_morosos();

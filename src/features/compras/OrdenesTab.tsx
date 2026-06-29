@@ -5,62 +5,64 @@ import { fmtMXN } from '../../lib/format';
 import type { OrdenCompra, EstadoOrden } from '../../types';
 import { NuevaOrdenModal } from './NuevaOrdenModal';
 import { OrdenDetalleModal } from './OrdenDetalleModal';
+import { useSupabasePaginated } from '../../hooks/useSupabasePaginated';
+import { Paginator } from '../../components/Paginator';
 
-interface OrdenListItem extends OrdenCompra {
-  proveedores: { nombre: string } | null;
+interface OrdenRow extends OrdenCompra {
+  proveedor_nombre: string | null;
 }
+
+interface OrdenesKpis { total: number; pendientes: number; comprado: number }
 
 const ESTADO_BADGE: Record<EstadoOrden, { bg: string; fg: string; label: string }> = {
   borrador: { bg: 'var(--surface-2)', fg: 'var(--ink-2)', label: 'Borrador' },
   enviada: { bg: 'var(--amber-soft)', fg: 'oklch(0.5 0.12 70)', label: 'Enviada' },
-  recibida: { bg: 'var(--ok-soft)', fg: 'var(--ok-2)', label: 'Recibida' },
+  recibida: { bg: 'var(--green-soft, oklch(0.95 0.04 145))', fg: 'var(--green-2)', label: 'Recibida' },
   cancelada: { bg: 'var(--red-soft)', fg: 'var(--red)', label: 'Cancelada' },
 };
 
 type Filtro = 'todos' | EstadoOrden;
+
+const PAGE_SIZE = 50;
+const sanitizar = (s: string) => s.trim().replace(/[,()]/g, ' ').trim();
 
 interface OrdenesTabProps {
   vendedorId: string;
 }
 
 export const OrdenesTab: React.FC<OrdenesTabProps> = ({ vendedorId }) => {
-  const [ordenes, setOrdenes] = useState<OrdenListItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [filtro, setFiltro] = useState<Filtro>('todos');
   const [nuevaOpen, setNuevaOpen] = useState(false);
   const [detalleId, setDetalleId] = useState<string | null>(null);
+  const [kpis, setKpis] = useState<OrdenesKpis>({ total: 0, pendientes: 0, comprado: 0 });
 
-  const fetchOrdenes = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    const { data, error } = await supabase
-      .from('ordenes_compra')
-      .select('*, proveedores(nombre)')
-      .order('fecha', { ascending: false });
-    if (error) {
-      setError('No se pudieron cargar las órdenes.');
-      setOrdenes([]);
-    } else {
-      setOrdenes((data as OrdenListItem[]) ?? []);
-    }
-    setLoading(false);
+  const cargarKpis = useCallback(async () => {
+    const { data } = await supabase.rpc('fn_ordenes_kpis');
+    if (data) setKpis(data as OrdenesKpis);
   }, []);
 
-  useEffect(() => {
-    fetchOrdenes();
-  }, [fetchOrdenes]);
+  const { data: ordenes, count, page, loading, error, setPage, refetch } = useSupabasePaginated<OrdenRow>(
+    (from, to) => {
+      let q = supabase
+        .from('vw_ordenes_compra')
+        .select('*', { count: 'exact' })
+        .order('fecha', { ascending: false })
+        .order('id', { ascending: false }) // desempate único para una paginación estable
+        .range(from, to);
+      q = q.eq('tipo', 'formal');
+      if (filtro !== 'todos') q = q.eq('estado', filtro);
+      const s = sanitizar(search);
+      if (s) q = q.or(`folio.ilike.%${s}%,proveedor_nombre.ilike.%${s}%`);
+      return q;
+    },
+    [search, filtro],
+    PAGE_SIZE,
+  );
 
-  const totalComprado = ordenes.filter((o) => o.estado === 'recibida').reduce((s, o) => s + Number(o.total), 0);
-  const pendientes = ordenes.filter((o) => o.estado === 'borrador' || o.estado === 'enviada').length;
-
-  const filtradas = ordenes.filter((o) => {
-    if (filtro !== 'todos' && o.estado !== filtro) return false;
-    const t = search.toLowerCase();
-    if (!t) return true;
-    return o.folio.toLowerCase().includes(t) || (o.proveedores?.nombre.toLowerCase().includes(t) ?? false);
-  });
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { cargarKpis(); }, [cargarKpis]);
+  const recargar = useCallback(() => { refetch(); cargarKpis(); }, [refetch, cargarKpis]);
 
   const FILTROS: { id: Filtro; label: string }[] = [
     { id: 'todos', label: 'Todas' },
@@ -76,15 +78,15 @@ export const OrdenesTab: React.FC<OrdenesTabProps> = ({ vendedorId }) => {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(180px, 100%), 1fr))', gap: 12 }}>
         <div className="card" style={{ padding: 16 }}>
           <div style={{ fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.04em', fontWeight: 600 }}>Órdenes totales</div>
-          <div className="num" style={{ fontSize: 22, fontWeight: 800, marginTop: 4 }}>{loading ? '—' : ordenes.length}</div>
+          <div className="num" style={{ fontSize: 22, fontWeight: 800, marginTop: 4 }}>{kpis.total}</div>
         </div>
         <div className="card" style={{ padding: 16 }}>
           <div style={{ fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.04em', fontWeight: 600 }}>Pendientes</div>
-          <div className="num" style={{ fontSize: 22, fontWeight: 800, marginTop: 4 }}>{loading ? '—' : pendientes}</div>
+          <div className="num" style={{ fontSize: 22, fontWeight: 800, marginTop: 4 }}>{kpis.pendientes}</div>
         </div>
         <div className="card" style={{ padding: 16 }}>
           <div style={{ fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.04em', fontWeight: 600 }}>Total comprado (recibido)</div>
-          <div className="num" style={{ fontSize: 22, fontWeight: 800, marginTop: 4, color: 'var(--green-2)' }}>{loading ? '—' : fmtMXN(totalComprado)}</div>
+          <div className="num" style={{ fontSize: 22, fontWeight: 800, marginTop: 4, color: 'var(--green-2)' }}>{fmtMXN(kpis.comprado)}</div>
         </div>
       </div>
 
@@ -113,40 +115,45 @@ export const OrdenesTab: React.FC<OrdenesTabProps> = ({ vendedorId }) => {
         {loading ? (
           <div style={{ padding: 40, textAlign: 'center', color: 'var(--muted)' }}>Cargando órdenes...</div>
         ) : error ? (
-          <div style={{ padding: 40, textAlign: 'center', color: 'var(--red)' }}>{error}</div>
-        ) : filtradas.length === 0 ? (
+          <div style={{ padding: 40, textAlign: 'center', color: 'var(--red)' }}>No se pudieron cargar las órdenes.</div>
+        ) : ordenes.length === 0 ? (
           <div style={{ padding: 40, textAlign: 'center', color: 'var(--muted)' }}>
             {search || filtro !== 'todos' ? 'No hay órdenes que coincidan.' : 'Aún no hay órdenes de compra.'}
           </div>
         ) : (
-          <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
-            {filtradas.map((o, i) => {
-              const badge = ESTADO_BADGE[o.estado];
-              return (
-                <li key={o.id} onClick={() => setDetalleId(o.id)}
-                  style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', borderTop: i === 0 ? 'none' : '1px solid var(--line-2)', cursor: 'pointer' }}>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <span className="mono" style={{ fontWeight: 700, fontSize: 13 }}>{o.folio}</span>
-                      <span style={{ flex: 'none', fontSize: 11, fontWeight: 600, padding: '2px 9px', borderRadius: 999, background: badge.bg, color: badge.fg }}>{badge.label}</span>
+          <>
+            <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+              {ordenes.map((o, i) => {
+                const badge = ESTADO_BADGE[o.estado];
+                return (
+                  <li key={o.id} onClick={() => setDetalleId(o.id)}
+                    style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', borderTop: i === 0 ? 'none' : '1px solid var(--line-2)', cursor: 'pointer' }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span className="mono" style={{ fontWeight: 700, fontSize: 13 }}>{o.folio}</span>
+                        <span style={{ flex: 'none', fontSize: 11, fontWeight: 600, padding: '2px 9px', borderRadius: 999, background: badge.bg, color: badge.fg }}>{badge.label}</span>
+                      </div>
+                      <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {o.proveedor_nombre ?? '—'}{o.fecha ? ` · ${new Date(o.fecha).toLocaleDateString('es-MX')}` : ''}
+                      </div>
                     </div>
-                    <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                      {o.proveedores?.nombre ?? '—'}{o.fecha ? ` · ${new Date(o.fecha).toLocaleDateString('es-MX')}` : ''}
-                    </div>
-                  </div>
-                  <div className="num" style={{ flex: 'none', fontWeight: 700, fontSize: 14 }}>{fmtMXN(o.total)}</div>
-                  <Icon name="chevron-right" size={16} color="var(--muted-2)" />
-                </li>
-              );
-            })}
-          </ul>
+                    <div className="num" style={{ flex: 'none', fontWeight: 700, fontSize: 14 }}>{fmtMXN(o.total)}</div>
+                    <Icon name="chevron-right" size={16} color="var(--muted-2)" />
+                  </li>
+                );
+              })}
+            </ul>
+            <div style={{ padding: '0 16px' }}>
+              <Paginator page={page} pageSize={PAGE_SIZE} count={count} onPage={setPage} />
+            </div>
+          </>
         )}
       </div>
 
       <NuevaOrdenModal isOpen={nuevaOpen} vendedorId={vendedorId} onClose={() => setNuevaOpen(false)}
-        onSaved={() => { setNuevaOpen(false); fetchOrdenes(); }} />
+        onSaved={() => { setNuevaOpen(false); recargar(); }} />
       <OrdenDetalleModal isOpen={detalleId !== null} ordenId={detalleId} onClose={() => setDetalleId(null)}
-        onChanged={fetchOrdenes} />
+        onChanged={recargar} />
     </div>
   );
 };

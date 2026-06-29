@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { subtotalPartida, calcularTotalesOrden, generarFolioOC } from './compras';
+import { subtotalPartida, calcularTotalesOrden } from './compras';
 
 describe('subtotalPartida', () => {
   it('redondea cantidad * precio a centavos', () => {
@@ -30,12 +30,5 @@ describe('calcularTotalesOrden', () => {
 
   it('orden vacía da ceros', () => {
     expect(calcularTotalesOrden([], 0.16)).toEqual({ subtotal: 0, iva: 0, total: 0 });
-  });
-});
-
-describe('generarFolioOC', () => {
-  it('da formato OC-AAAA-######', () => {
-    const f = generarFolioOC(new Date(2026, 5, 16, 12, 0, 0));
-    expect(f).toMatch(/^OC-2026-\d{6}$/);
   });
 });

@@ -52,7 +52,7 @@ export const Usuarios: React.FC = () => {
               width: 56,
               height: 56,
               borderRadius: 16,
-              background: 'var(--green-soft)',
+              background: 'var(--green-soft, oklch(0.95 0.04 145))',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',

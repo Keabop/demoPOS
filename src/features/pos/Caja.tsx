@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
+import { fetchAll } from '../../lib/fetchAll';
 import { toast } from '../../lib/toast';
 import { useAuth } from '../auth/AuthContext';
 import { Topbar } from '../../components/Topbar';
@@ -7,6 +8,7 @@ import { Icon } from '../../components/Icon';
 import { fmtMXN } from '../../lib/format';
 import { round2, sumMoney } from '../../lib/money';
 import { calcularResumenCaja, grupoCaja, type GrupoCaja } from '../../lib/caja';
+import { useAlActivar } from '../../hooks/useAlActivar';
 
 interface MovimientoCajaDB {
   id: string;
@@ -70,7 +72,11 @@ const CLASE_ICON: Record<ActivityItem['clase'], string> = {
   apertura: 'cash', ingreso: 'arrow-up', egreso: 'arrow-down', venta: 'cart', abono: 'users',
 };
 
-export const Caja: React.FC = () => {
+interface CajaProps {
+  activo?: boolean;
+}
+
+export const Caja: React.FC<CajaProps> = ({ activo }) => {
   const { profile } = useAuth();
   
   // Caja shift state
@@ -121,20 +127,22 @@ export const Caja: React.FC = () => {
   const loadPastShifts = async () => {
     try {
       setLoadingPast(true);
-      const { data, error: err } = await supabase
-        .from('movimientos_caja')
-        .select(`
-          *,
-          vendedor:vendedor_id (
-            nombre
-          )
-        `)
-        .in('tipo', ['apertura', 'egreso'])
-        .order('fecha', { ascending: false });
-
-      if (err) throw err;
-
-      const movements = (data || []) as MovimientoCajaDB[];
+      // Historial completo de aperturas/cortes en lotes (sin tope de 1000),
+      // necesario para reconstruir los turnos por pares apertura↔corte.
+      const movements = await fetchAll<MovimientoCajaDB>((from, to) =>
+        supabase
+          .from('movimientos_caja')
+          .select(`
+            *,
+            vendedor:vendedor_id (
+              nombre
+            )
+          `)
+          .in('tipo', ['apertura', 'egreso'])
+          .order('fecha', { ascending: false })
+          .order('id', { ascending: false }) // desempate único: los lotes de .range deben ser estables
+          .range(from, to),
+      );
       const shiftsList: PastShift[] = [];
       let pendingCorte: MovimientoCajaDB | null = null;
 
@@ -234,7 +242,7 @@ export const Caja: React.FC = () => {
                             )}
                           </td>
                           <td style={{ padding: '12px', textAlign: 'center' }}>
-                            <span className={`badge ${shift.estado === 'activo' ? 'ok' : shift.estado === 'cerrado' ? 'gray' : 'amber'}`} style={{ fontSize: 10 }}>
+                            <span className={`badge ${shift.estado === 'activo' ? 'green' : shift.estado === 'cerrado' ? 'gray' : 'amber'}`} style={{ fontSize: 10 }}>
                               {shift.estado === 'activo' ? 'Activo' : shift.estado === 'cerrado' ? 'Cerrado' : 'Abierto s/c'}
                             </span>
                           </td>
@@ -323,7 +331,7 @@ export const Caja: React.FC = () => {
           .from('ventas')
           .select('*, clientes:cliente_id(nombre)')
           .gte('fecha', lastApertura.fecha)
-          .in('estado', ['cobrada', 'pendiente']);
+          .in('estado', ['cobrada', 'pendiente', 'devuelta']);
 
         if (vtsErr) throw vtsErr;
         if (cancelled) return;
@@ -362,6 +370,10 @@ export const Caja: React.FC = () => {
       cancelled = true;
     };
   }, [refreshKey]);
+
+  // Keep-alive: al volver a esta pantalla (sin remontar), recarga los datos del
+  // servidor reutilizando el mismo disparador que el botón "Actualizar".
+  useAlActivar(activo ?? true, () => setRefreshKey(prev => prev + 1));
 
   // Handle opening of caja
   const handleOpenCaja = async (e: React.FormEvent) => {
@@ -774,8 +786,8 @@ export const Caja: React.FC = () => {
           font-weight: 700;
           text-align: center;
         }
-        .caja-corte-diff-badge.cuadrado { background: var(--ok-soft); color: var(--ok-2); }
-        .caja-corte-diff-badge.sobrante { background: var(--ok-soft); color: var(--ok-2); }
+        .caja-corte-diff-badge.cuadrado { background: var(--green-soft); color: var(--green-2); }
+        .caja-corte-diff-badge.sobrante { background: var(--green-soft); color: var(--green-2); }
         .caja-corte-diff-badge.faltante { background: var(--red-soft); color: var(--red); }
 
         @media (max-width: 1024px) {
@@ -814,7 +826,7 @@ export const Caja: React.FC = () => {
           </div>
           <div className="caja-stat-card">
             <div className="caja-stat-label">Ventas Totales Turno</div>
-            <div className="caja-stat-value num">{fmtMXN(sumMoney(ventas.map(v => Number(v.total))))}</div>
+            <div className="caja-stat-value num">{fmtMXN(sumMoney(ventas.filter(v => v.estado !== 'devuelta').map(v => Number(v.total))))}</div>
           </div>
         </div>
 
@@ -927,7 +939,7 @@ export const Caja: React.FC = () => {
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                           {ventas.filter(v => v.tipo_pago === 'efectivo').map(v => (
                             <div key={v.id} style={{ display: 'flex', justifyContent: 'space-between' }}>
-                              <span>{v.folio} ({new Date(v.fecha).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})</span>
+                              <span>{v.folio} ({new Date(v.fecha).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}){v.estado === 'devuelta' ? ' · devuelta' : ''}</span>
                               <span className="num font-bold">{fmtMXN(Number(v.total))}</span>
                             </div>
                           ))}
@@ -1065,7 +1077,7 @@ export const Caja: React.FC = () => {
               <div className="caja-breakdown-row" style={{ display: 'flex', flexDirection: 'column', alignItems: 'stretch' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span style={{ color: 'var(--muted)', display: 'flex', alignItems: 'center', gap: 6 }}>
-                    (-) Salidas Manuales (Egresos)
+                    (-) Salidas y Devoluciones (Efectivo)
                     <button
                       type="button"
                       onClick={() => setShowEgresos(!showEgresos)}
@@ -1097,9 +1109,10 @@ export const Caja: React.FC = () => {
                     flexDirection: 'column',
                     gap: 6
                   }}>
-                    <div style={{ fontWeight: 'bold', color: 'var(--ink-2)', marginBottom: 2 }}>Desglose de Egresos Manuales:</div>
+                    <div style={{ fontWeight: 'bold', color: 'var(--ink-2)', marginBottom: 2 }}>Desglose de Salidas y Devoluciones (Efectivo):</div>
+                    <div style={{ color: 'var(--muted)', fontStyle: 'italic', marginBottom: 4 }}>Incluye retiros manuales y reembolsos de devolución en efectivo. Las devoluciones por transferencia o tarjeta no afectan el efectivo del cajón.</div>
                     {manualMovements.filter(m => m.tipo === 'egreso' && !m.descripcion.startsWith('Corte de caja')).length === 0 ? (
-                      <div style={{ color: 'var(--muted)', fontStyle: 'italic' }}>No hay egresos manuales registrados en este turno.</div>
+                      <div style={{ color: 'var(--muted)', fontStyle: 'italic' }}>No hay salidas ni devoluciones en efectivo en este turno.</div>
                     ) : (
                       <>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -1662,7 +1675,7 @@ export const Caja: React.FC = () => {
                   <span>Efectivo Contado:</span>
                   <span className="num font-bold">{fmtMXN(Number(corteCounted))}</span>
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', borderTop: '1px dashed var(--line)', paddingTop: 6, color: difference === 0 ? 'var(--ok-2)' : difference > 0 ? 'var(--ok-2)' : 'var(--red)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', borderTop: '1px dashed var(--line)', paddingTop: 6, color: difference === 0 ? 'var(--green-2)' : difference > 0 ? 'var(--green-2)' : 'var(--red)' }}>
                   <span>Diferencia:</span>
                   <span>{difference === 0 ? 'Cuadrado' : difference > 0 ? `+${fmtMXN(difference)}` : `-${fmtMXN(Math.abs(difference))}`}</span>
                 </div>

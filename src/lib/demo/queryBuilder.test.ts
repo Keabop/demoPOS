@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import { PGlite } from '@electric-sql/pglite';
-import { DEMO_SCHEMA_SQL } from './schema';
+import { FULL_SCHEMA_SQL } from './schema_all';
 import * as dbMod from './db';
 import { from } from './queryBuilder';
 
@@ -8,7 +8,7 @@ import { from } from './queryBuilder';
 let mem: PGlite;
 beforeAll(async () => {
   mem = new PGlite();
-  await mem.exec(DEMO_SCHEMA_SQL);
+  await mem.exec(FULL_SCHEMA_SQL);
   await mem.exec(`
     INSERT INTO perfiles(id,email,nombre,rol) VALUES
       ('00000000-0000-0000-0000-000000000001','a@d.mx','Admin','admin');

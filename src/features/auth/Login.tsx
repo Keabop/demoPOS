@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Icon } from '../../components/Icon';
+import { LogoNegocio } from '../../components/LogoNegocio';
 import { useAuth } from './AuthContext';
 import { useConfig } from '../config/ConfigContext';
 import { DEMO_USERS } from '../../lib/demo/auth';
@@ -53,12 +54,12 @@ export const Login: React.FC = () => {
 
         {/* Left brand panel */}
         <div style={{ background: 'linear-gradient(160deg, #0f1714 0%, #1a2a23 100%)', color: '#fff', padding: '44px 40px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', position: 'relative', overflow: 'hidden' }}>
-          <div style={{ position: 'absolute', right: -120, top: -120, width: 380, height: 380, borderRadius: '50%', border: '1px solid oklch(0.72 0.14 78 / 0.15)' }}></div>
-          <div style={{ position: 'absolute', right: -60, top: -60, width: 260, height: 260, borderRadius: '50%', border: '1px solid oklch(0.72 0.14 78 / 0.1)' }}></div>
+          <div style={{ position: 'absolute', right: -120, top: -120, width: 380, height: 380, borderRadius: '50%', border: '1px solid oklch(0.7 0.13 145 / 0.15)' }}></div>
+          <div style={{ position: 'absolute', right: -60, top: -60, width: 260, height: 260, borderRadius: '50%', border: '1px solid oklch(0.7 0.13 145 / 0.1)' }}></div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 14, position: 'relative' }}>
             <div style={{ width: 48, height: 48, borderRadius: 12, background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 5, boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.2)' }}>
-              <img src={config.logoUrl} alt={config.nombre} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+              <LogoNegocio logoUrl={config.logoUrl} nombre={config.nombre} fontSize={18} radius={8} />
             </div>
             <div>
               <div style={{ fontWeight: 800, fontSize: 22, letterSpacing: '-0.02em' }}>{config.nombre}</div>

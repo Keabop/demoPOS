@@ -19,6 +19,7 @@ export const NuevoClienteModal: React.FC<NuevoClienteModalProps> = ({
   const [lada, setLada] = useState('52');
   const [limite, setLimite] = useState('0.00');
   const [diasCredito, setDiasCredito] = useState('30');
+  const [nivelPrecio, setNivelPrecio] = useState<'contado' | 'credito' | 'subdistribuidor'>('contado');
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
@@ -31,6 +32,7 @@ export const NuevoClienteModal: React.FC<NuevoClienteModalProps> = ({
     setLada('52');
     setLimite('0.00');
     setDiasCredito('30');
+    setNivelPrecio('contado');
     setErrorMsg(null);
     onClose();
   };
@@ -55,6 +57,7 @@ export const NuevoClienteModal: React.FC<NuevoClienteModalProps> = ({
           lada,
           limite_credito: Number(limite) || 0.00,
           dias_credito: Number(diasCredito) || 30,
+          nivel_precio: nivelPrecio,
           saldo_deudor: 0.00,
           activo_para_credito: true
         }]);
@@ -273,6 +276,21 @@ export const NuevoClienteModal: React.FC<NuevoClienteModalProps> = ({
                 onChange={(e) => setDiasCredito(e.target.value)}
                 disabled={loading}
               />
+            </div>
+
+            <div className="form-group">
+              <label className="label" htmlFor="client-price-level">Nivel de precio</label>
+              <select
+                id="client-price-level"
+                className="input"
+                value={nivelPrecio}
+                onChange={(e) => setNivelPrecio(e.target.value as 'contado' | 'credito' | 'subdistribuidor')}
+                disabled={loading}
+              >
+                <option value="contado">Contado</option>
+                <option value="credito">Crédito</option>
+                <option value="subdistribuidor">Subdistribuidor</option>
+              </select>
             </div>
           </div>
 

@@ -1,3 +1,13 @@
+/* Navegación por teclado en listas/rejillas (R8): foco visible en la fila/tarjeta activa. */
+[data-nav-index] {
+  outline: none;
+}
+[data-nav-index]:focus-visible {
+  outline: 2px solid var(--green);
+  outline-offset: -2px;
+  border-radius: 8px;
+}
+
 .counter {
   font-size: 16px;
   padding: 5px 10px;

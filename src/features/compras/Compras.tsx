@@ -3,18 +3,21 @@ import { Topbar } from '../../components/Topbar';
 import { Icon } from '../../components/Icon';
 import { OrdenesTab } from './OrdenesTab';
 import { ProveedoresTab } from './ProveedoresTab';
+import { ComprasLocalesTab } from './ComprasLocalesTab';
 
 interface ComprasProps {
   vendedorId: string;
+  activo?: boolean;
 }
 
-type Tab = 'ordenes' | 'proveedores';
+type Tab = 'ordenes' | 'locales' | 'proveedores';
 
-export const Compras: React.FC<ComprasProps> = ({ vendedorId }) => {
+export const Compras: React.FC<ComprasProps> = ({ vendedorId, activo }) => {
   const [tab, setTab] = useState<Tab>('ordenes');
 
   const tabs: { id: Tab; label: string; icon: string }[] = [
     { id: 'ordenes', label: 'Órdenes de Compra', icon: 'credit' },
+    { id: 'locales', label: 'Compras locales', icon: 'sack' },
     { id: 'proveedores', label: 'Proveedores', icon: 'users' },
   ];
 
@@ -35,7 +38,9 @@ export const Compras: React.FC<ComprasProps> = ({ vendedorId }) => {
           })}
         </div>
 
-        {tab === 'ordenes' ? <OrdenesTab vendedorId={vendedorId} /> : <ProveedoresTab />}
+        {tab === 'ordenes' ? <OrdenesTab vendedorId={vendedorId} />
+          : tab === 'locales' ? <ComprasLocalesTab />
+          : <ProveedoresTab activo={activo} />}
       </div>
     </>
   );

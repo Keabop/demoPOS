@@ -2,6 +2,7 @@ import React, { useState, useMemo, Suspense, lazy } from 'react';
 import { Topbar } from '../../components/Topbar';
 import { Icon } from '../../components/Icon';
 import { rangoDeFechas } from '../ventas/historialModel';
+import { useAlActivar } from '../../hooks/useAlActivar';
 
 // Lazily import tab subcomponents
 const ReporteVentas = lazy(() => import('./ReporteVentas').then(m => ({ default: m.ReporteVentas })));
@@ -12,12 +13,23 @@ const ReporteCaja = lazy(() => import('./ReporteCaja').then(m => ({ default: m.R
 type TabType = 'ventas' | 'cobranza' | 'inventario' | 'caja';
 type DateRangeOption = 'hoy' | '7dias' | 'mes' | 'ano';
 
-export const Reportes: React.FC = () => {
+interface ReportesProps {
+  activo?: boolean;
+}
+
+export const Reportes: React.FC<ReportesProps> = ({ activo }) => {
   const [activeTab, setActiveTab] = useState<TabType>('ventas');
   const [dateRange, setDateRange] = useState<DateRangeOption>('mes');
+  // Keep-alive: nonce que se usa como `key` del reporte activo. Al volver a la
+  // pantalla (sin remontar) lo incrementamos para forzar que el reporte vuelva a
+  // pedir sus datos al servidor, conservando la pestaña y el período elegidos.
+  const [refreshNonce, setRefreshNonce] = useState(0);
 
   // Rango de fechas anclado a la hora de México (no del navegador). Ver rangoDeFechas.
   const { startDate, endDate } = useMemo(() => rangoDeFechas(dateRange), [dateRange]);
+
+  const recargar = () => setRefreshNonce(n => n + 1);
+  useAlActivar(activo ?? true, recargar);
 
   const tabs: { id: TabType; label: string; icon: string }[] = [
     { id: 'ventas', label: 'Ventas', icon: 'trending-up' },
@@ -78,10 +90,10 @@ export const Reportes: React.FC = () => {
             </div>
           }
         >
-          {activeTab === 'ventas' && <ReporteVentas startDate={startDate} endDate={endDate} />}
-          {activeTab === 'cobranza' && <ReporteCobranza startDate={startDate} endDate={endDate} />}
-          {activeTab === 'inventario' && <ReporteInventario startDate={startDate} endDate={endDate} />}
-          {activeTab === 'caja' && <ReporteCaja startDate={startDate} endDate={endDate} />}
+          {activeTab === 'ventas' && <ReporteVentas key={refreshNonce} startDate={startDate} endDate={endDate} />}
+          {activeTab === 'cobranza' && <ReporteCobranza key={refreshNonce} startDate={startDate} endDate={endDate} />}
+          {activeTab === 'inventario' && <ReporteInventario key={refreshNonce} startDate={startDate} endDate={endDate} />}
+          {activeTab === 'caja' && <ReporteCaja key={refreshNonce} startDate={startDate} endDate={endDate} />}
         </Suspense>
       </div>
     </>

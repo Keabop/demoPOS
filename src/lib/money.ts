@@ -19,11 +19,14 @@ export interface LineaVenta {
   cantidad: number;
   /** Tasa de IVA como fracción: 0.00 (exento), 0.16 (16%), etc. */
   tasaIva: number;
+  /** Tasa de IEPS como fracción: 0.00 (exento), 0.06 (6%), etc. */
+  tasaIeps?: number;
 }
 
 export interface TotalesVenta {
   subtotal: number;
   iva: number;
+  ieps: number;
   total: number;
 }
 
@@ -35,15 +38,20 @@ export interface TotalesVenta {
 export function calcularTotales(lineas: LineaVenta[]): TotalesVenta {
   let subtotal = 0;
   let iva = 0;
+  let ieps = 0;
   for (const l of lineas) {
     const baseLinea = round2(Number(l.precioUnitario) * Number(l.cantidad));
-    const ivaLinea = round2(baseLinea * Number(l.tasaIva || 0));
+    const iepsLinea = round2(baseLinea * Number(l.tasaIeps || 0));
+    // Orden fiscal: IVA sobre base + IEPS. En AGROMAR tasaIva = 0, así que iva = 0.
+    const ivaLinea = round2((baseLinea + iepsLinea) * Number(l.tasaIva || 0));
     subtotal += baseLinea;
+    ieps += iepsLinea;
     iva += ivaLinea;
   }
   subtotal = round2(subtotal);
+  ieps = round2(ieps);
   iva = round2(iva);
-  return { subtotal, iva, total: round2(subtotal + iva) };
+  return { subtotal, iva, ieps, total: round2(subtotal + iva + ieps) };
 }
 
 /** Subtotal de una sola partida (precio * cantidad) redondeado a centavos. */

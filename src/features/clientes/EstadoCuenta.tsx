@@ -5,9 +5,10 @@ import type { Cliente, Venta, PagoCredito } from '../../types';
 import { Icon } from '../../components/Icon';
 import { fmtMXN } from '../../lib/format';
 import { useConfig } from '../config/ConfigContext';
-import { fechaVencimiento, diasDeAtraso, diasAtrasoMostrar } from '../../lib/dates';
+import { fechaVencimiento, diasDeAtraso } from '../../lib/dates';
 import { round2 } from '../../lib/money';
 import { exportarEstadoCuentaPDF, exportarEstadoCuentaExcel, type EstadoCuentaModel } from '../../lib/estadoCuentaExport';
+import { fetchAll } from '../../lib/fetchAll';
 
 interface EstadoCuentaProps {
   cliente: Cliente;
@@ -19,17 +20,29 @@ interface EstadoCuentaProps {
 
 interface NoteRowData {
   venta: Venta;
-  saldo: number;
+  saldo: number;       // saldo total con interés (capital + interés)
+  capital: number;
+  interes: number;
   diasAtraso: number;
   fecVen: Date;
   status: 'VENCIDA' | 'AL CORRIENTE' | 'PAGADA';
   pagos: PagoCredito[];
 }
 
+// Desglose por nota calculado por el servidor (fn_estado_cuenta_cliente), interest-aware.
+interface DesgloseNota {
+  capital: number;
+  interes: number;
+  saldo_total: number;
+  fecha_venc: string | null;
+  dias_atraso: number;
+}
+
 export const EstadoCuenta: React.FC<EstadoCuentaProps> = ({ cliente, onBack, onOpenAbono, readOnly = false }) => {
   const { config } = useConfig();
   const [ventas, setVentas] = useState<Venta[]>([]);
   const [pagos, setPagos] = useState<PagoCredito[]>([]);
+  const [desglose, setDesglose] = useState<Record<string, DesgloseNota>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -109,31 +122,44 @@ export const EstadoCuenta: React.FC<EstadoCuentaProps> = ({ cliente, onBack, onO
       setLoading(true);
       setError(null);
 
-      // Fetch all credit sales for the client
-      const { data: ventasData, error: ventasError } = await supabase
-        .from('ventas')
-        .select('*')
-        .eq('cliente_id', cliente.id)
-        .eq('tipo_pago', 'credito')
-        .order('fecha', { ascending: true });
-
-      if (ventasError) throw ventasError;
-
-      if (ventasData && ventasData.length > 0) {
-        const ventaIds = ventasData.map(v => v.id);
-        const { data: pagosData, error: pagosError } = await supabase
-          .from('pagos_credito')
+      // Todas las notas a crédito del cliente (en lotes, sin tope de 1000).
+      const ventasData = await fetchAll<Venta>((from, to) =>
+        supabase
+          .from('ventas')
           .select('*')
-          .in('venta_id', ventaIds)
-          .order('fecha', { ascending: true });
+          .eq('cliente_id', cliente.id)
+          .eq('tipo_pago', 'credito')
+          .order('fecha', { ascending: true })
+          .order('id', { ascending: true }) // desempate único: los lotes de .range deben ser estables
+          .range(from, to),
+      );
 
-        if (pagosError) throw pagosError;
+      if (ventasData.length > 0) {
+        const ventaIds = ventasData.map(v => v.id);
+        const pagosData = await fetchAll<PagoCredito>((from, to) =>
+          supabase
+            .from('pagos_credito')
+            .select('*')
+            .in('venta_id', ventaIds)
+            .order('fecha', { ascending: true })
+            .order('id', { ascending: true }) // desempate único: los lotes de .range deben ser estables
+            .range(from, to),
+        );
         setVentas(ventasData);
-        setPagos(pagosData || []);
+        setPagos(pagosData);
       } else {
         setVentas([]);
         setPagos([]);
       }
+
+      // Desglose interest-aware por nota (capital + interés = saldo), calculado en el servidor.
+      const { data: desgloseData, error: desgError } = await supabase.rpc('fn_estado_cuenta_cliente', { p_cliente_id: cliente.id });
+      if (desgError) throw desgError;
+      const mapa: Record<string, DesgloseNota> = {};
+      (desgloseData as ({ venta_id: string } & DesgloseNota)[] ?? []).forEach((d) => {
+        mapa[d.venta_id] = { capital: Number(d.capital), interes: Number(d.interes), saldo_total: Number(d.saldo_total), fecha_venc: d.fecha_venc, dias_atraso: Number(d.dias_atraso) };
+      });
+      setDesglose(mapa);
     } catch (err) {
       console.error('Error al cargar estado de cuenta:', err);
       setError(err instanceof Error ? err.message : 'Error al obtener datos del servidor');
@@ -160,42 +186,36 @@ export const EstadoCuenta: React.FC<EstadoCuentaProps> = ({ cliente, onBack, onO
     setCustomDays(isPreset ? '' : String(defaultDays));
   }, [cliente.id, diasCreditoGuardado]);
 
-  // Recalculate row details dynamically based on credit days selection
+  // Detalle por nota: el saldo, el interés y el atraso vienen del servidor
+  // (fn_estado_cuenta_cliente), interest-aware. Fallback a cálculo local sin
+  // interés si faltara el desglose (no debería pasar).
   const processedRows: NoteRowData[] = ventas.map(v => {
     const vPagos = pagos.filter(p => p.venta_id === v.id);
-    const totalAbonos = round2(vPagos.reduce((sum, p) => sum + p.monto, 0));
-    const saldo = round2(Math.max(0, v.total - totalAbonos));
+    const d = desglose[v.id];
 
-    // FEC. VEN. = fecha_venta + (venta.plazo_dias || dias_credito), en fecha LOCAL.
-    const plazo = v.plazo_dias || diasCredito;
-    const fecVen = fechaVencimiento(v.fecha!, plazo);
-
-    // DÍAS DE ATRASO = mora real (días vencidos desde FEC. VEN.), 0 si aún no vence.
-    // Coincide con el badge de status y viaja correcto al PDF/Excel (T-FECHA-2).
-    const diasAtraso = diasAtrasoMostrar(fecVen, today);
+    const saldo = d ? round2(d.saldo_total) : round2(Math.max(0, v.total - round2(vPagos.reduce((s, p) => s + p.monto, 0))));
+    const capital = d ? round2(d.capital) : saldo;
+    const interes = d ? round2(d.interes) : 0;
+    const fecVen = d && d.fecha_venc ? getLocalDate(d.fecha_venc) : fechaVencimiento(v.fecha!, v.plazo_dias || diasCredito);
+    const atrasoConSigno = d ? d.dias_atraso : diasDeAtraso(fecVen, today);
+    const diasAtraso = Math.max(0, atrasoConSigno);
 
     let status: 'VENCIDA' | 'AL CORRIENTE' | 'PAGADA';
-    if (saldo === 0) {
+    if (saldo <= 0) {
       status = 'PAGADA';
-    } else if (diasDeAtraso(fecVen, today) > 0) {
+    } else if (atrasoConSigno > 0) {
       status = 'VENCIDA';
     } else {
       status = 'AL CORRIENTE';
     }
 
-    return {
-      venta: v,
-      saldo,
-      diasAtraso,
-      fecVen,
-      status,
-      pagos: vPagos,
-    };
+    return { venta: v, saldo, capital, interes, diasAtraso, fecVen, status, pagos: vPagos };
   });
 
   // Calculate metrics
   const totalSaldo = processedRows.reduce((sum, r) => sum + r.saldo, 0);
   const totalVencido = processedRows.reduce((sum, r) => r.status === 'VENCIDA' ? sum + r.saldo : sum, 0);
+  const totalInteres = round2(processedRows.reduce((sum, r) => sum + r.interes, 0));
   // TOTAL NOTAS: Sum of outstanding balances of all active notes (unpaid).
   const totalNotas = processedRows.reduce((sum, r) => r.status !== 'PAGADA' ? sum + r.saldo : sum, 0);
   const saldoPorCobrar = totalSaldo;
@@ -213,12 +233,14 @@ export const EstadoCuenta: React.FC<EstadoCuentaProps> = ({ cliente, onBack, onO
       rancho: cliente.rancho,
       telefono: cliente.telefono,
     },
-    kpis: { diasCredito, totalVencido, totalNotas, saldoPorCobrar },
+    kpis: { diasCredito, totalVencido, totalNotas, saldoPorCobrar, totalInteres },
     notas: processedRows.map((r) => ({
       remision: r.venta.folio,
       fecha: formatDDMMYYYY(r.venta.fecha),
       fecVen: formatDDMMYYYY(r.fecVen),
       total: Number(r.venta.total),
+      capital: r.capital,
+      interes: r.interes,
       saldo: r.saldo,
       diasAtraso: r.diasAtraso,
       status: r.status,
@@ -465,8 +487,8 @@ export const EstadoCuenta: React.FC<EstadoCuentaProps> = ({ cliente, onBack, onO
           color: var(--red);
         }
         .est-cta-status-badge.corriente {
-          background: var(--ok-soft);
-          color: var(--ok-2);
+          background: var(--green-soft);
+          color: var(--green-2);
         }
         .est-cta-status-badge.pagada {
           background: var(--line-2);
@@ -577,13 +599,13 @@ export const EstadoCuenta: React.FC<EstadoCuentaProps> = ({ cliente, onBack, onO
               padding: 24,
               background: totalVencido > 0
                 ? 'linear-gradient(135deg, var(--red-soft) 0%, var(--surface) 70%)'
-                : 'linear-gradient(135deg, var(--ok-soft) 0%, var(--surface) 70%)',
-              borderColor: totalVencido > 0 ? 'oklch(0.85 0.08 25)' : 'var(--ok-line)',
+                : 'linear-gradient(135deg, var(--green-soft) 0%, var(--surface) 70%)',
+              borderColor: totalVencido > 0 ? 'oklch(0.85 0.08 25)' : 'var(--green-line)',
             }}
           >
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 20, flexWrap: 'wrap' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-                <div style={{ width: 56, height: 56, borderRadius: 14, background: totalVencido > 0 ? 'var(--red)' : 'var(--ok)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.2)' }}>
+                <div style={{ width: 56, height: 56, borderRadius: 14, background: totalVencido > 0 ? 'var(--red)' : 'var(--green)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.2)' }}>
                   <Icon name={totalVencido > 0 ? 'alert' : 'credit'} size={26} />
                 </div>
                 <div>
@@ -591,6 +613,7 @@ export const EstadoCuenta: React.FC<EstadoCuentaProps> = ({ cliente, onBack, onO
                   <div style={{ fontSize: 13, color: 'var(--ink-2)', marginTop: 2 }}>
                     {processedRows.filter((r) => r.status !== 'PAGADA').length} notas activas
                     {totalVencido > 0 && <span style={{ color: 'var(--red)', fontWeight: 600 }}> · {fmtMXN(totalVencido)} vencido</span>}
+                    {totalInteres > 0 && <span style={{ color: 'var(--red)', fontWeight: 600 }}> · {fmtMXN(totalInteres)} interés (2% mensual)</span>}
                   </div>
                 </div>
               </div>
@@ -602,7 +625,7 @@ export const EstadoCuenta: React.FC<EstadoCuentaProps> = ({ cliente, onBack, onO
             </div>
             <div style={{ marginTop: 18 }}>
               <div style={{ height: 8, background: 'var(--surface)', borderRadius: 999, border: '1px solid var(--line)', overflow: 'hidden' }}>
-                <div style={{ height: '100%', width: `${pctLiquidado}%`, background: totalVencido > 0 ? 'var(--red)' : 'var(--ok)', borderRadius: 999 }} />
+                <div style={{ height: '100%', width: `${pctLiquidado}%`, background: totalVencido > 0 ? 'var(--red)' : 'var(--green)', borderRadius: 999 }} />
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6, fontSize: 11, color: 'var(--muted)' }}>
                 <span>{pctLiquidado}% liquidado</span>
@@ -663,9 +686,9 @@ export const EstadoCuenta: React.FC<EstadoCuentaProps> = ({ cliente, onBack, onO
                     gap: 6,
                     cursor: savingDefault ? 'not-allowed' : 'pointer',
                     transition: 'all 0.2s',
-                    background: saveSuccess ? 'var(--ok-soft)' : 'var(--surface)',
-                    border: `1.5px solid ${saveSuccess ? 'var(--ok)' : 'var(--line)'}`,
-                    color: saveSuccess ? 'var(--ok-2)' : 'var(--ink)'
+                    background: saveSuccess ? 'var(--green-soft)' : 'var(--surface)',
+                    border: `1.5px solid ${saveSuccess ? 'var(--green)' : 'var(--line)'}`,
+                    color: saveSuccess ? 'var(--green-2)' : 'var(--ink)'
                   }}
                   disabled={savingDefault}
                   title="Guardar este plazo como el predeterminado para este cliente"
@@ -770,6 +793,7 @@ export const EstadoCuenta: React.FC<EstadoCuentaProps> = ({ cliente, onBack, onO
                           </td>
                           <td className="num" style={{ textAlign: 'right', fontWeight: 'bold' }}>
                             {row.saldo > 0 ? fmtMXN(row.saldo) : ''}
+                            {row.interes > 0 && <div style={{ fontSize: 10, color: 'var(--red)', fontWeight: 600 }}>incl. {fmtMXN(row.interes)} int.</div>}
                           </td>
                           <td style={{ textAlign: 'center' }}>
                             <span className={`est-cta-status-badge ${row.status.toLowerCase().replace(' ', '')}`}>
@@ -820,6 +844,7 @@ export const EstadoCuenta: React.FC<EstadoCuentaProps> = ({ cliente, onBack, onO
                                 </td>
                                 <td className="num" style={{ textAlign: 'right', fontWeight: 'bold' }}>
                                   {row.saldo > 0 ? fmtMXN(row.saldo) : ''}
+                                  {row.interes > 0 && <div style={{ fontSize: 10, color: 'var(--red)', fontWeight: 600 }}>incl. {fmtMXN(row.interes)} int.</div>}
                                 </td>
                                 <td style={{ textAlign: 'center' }}>
                                   <span className={`est-cta-status-badge ${row.status.toLowerCase().replace(' ', '')}`}>

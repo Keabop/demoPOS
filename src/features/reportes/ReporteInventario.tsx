@@ -1,30 +1,18 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useId } from 'react';
 import { supabase } from '../../lib/supabase';
-import type { Lote, Producto, Venta, DetalleVenta } from '../../types';
+import type { ReporteInventarioData } from '../../types';
 import { Icon } from '../../components/Icon';
 import { fmtMXN } from '../../lib/format';
-import { costoValuacion } from '../../lib/valuacion';
 
 interface ReportProps {
   startDate: Date;
   endDate: Date;
 }
 
-// ── Tipos locales que extienden las tablas base ──────────────────────────────
-interface LoteConProducto extends Lote {
-  productos: Producto | null;
-}
-interface DetalleVentaConProducto extends DetalleVenta {
-  productos: Producto | null;
-}
-interface VentaConDetalles extends Venta {
-  ventas_detalles: DetalleVentaConProducto[];
-}
-
 // ── Lenguaje visual compartido con ReporteVentas ─────────────────────────────
 const GREEN_SHADES = [
-  'oklch(0.55 0.14 76)', 'oklch(0.62 0.14 77)', 'oklch(0.68 0.13 78)',
-  'oklch(0.74 0.11 80)', 'oklch(0.80 0.09 82)', 'oklch(0.86 0.07 84)',
+  'oklch(0.50 0.13 145)', 'oklch(0.58 0.13 145)', 'oklch(0.64 0.12 145)',
+  'oklch(0.70 0.10 145)', 'oklch(0.77 0.08 145)', 'oklch(0.84 0.06 145)',
 ];
 
 const fmtNum = (n: number) => Number(n).toLocaleString('es-MX', { maximumFractionDigits: 0 });
@@ -51,9 +39,8 @@ interface KpiProps {
   label: string; sublabel?: string; value: React.ReactNode; icon: string;
   iconBg: string; iconColor: string; spark: number[]; valueColor?: string;
 }
-const idCounter = { n: 0 };
 const KpiCard: React.FC<KpiProps> = ({ label, sublabel, value, icon, iconBg, iconColor, spark, valueColor }) => {
-  const gid = useMemo(() => `spk-inv-${idCounter.n++}`, []);
+  const gid = `spk-inv-${useId().replace(/:/g, '')}`;
   const sp = sparkPath(spark);
   return (
     <div className="card ag-rise" style={{ padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -100,14 +87,11 @@ const cardHead: React.CSSProperties = { display: 'flex', alignItems: 'center', j
 const thBase: React.CSSProperties = { fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--muted)', fontWeight: 700, borderBottom: '1px solid var(--line)' };
 const tdBase: React.CSSProperties = { borderBottom: '1px solid var(--line-2)', fontSize: 13 };
 
-// Productos próximos a caducar / con stock bajo: horizonte de la vista
-const EXPIRY_HORIZON_DAYS = 90; // KPI "Lotes por caducar (≤90 días)"
-const TIMELINE_MONTHS = 6;      // gráfica "Lotes por caducar" (próximos 6 meses)
+const TIMELINE_MONTHS = 6; // gráfica "Lotes por caducar" (próximos 6 meses)
+const EMPTY_KPIS = { valuation: 0, estimados: 0, expiringCount: 0, expiringValue: 0, lowStock: 0, skus: 0 };
 
 export const ReporteInventario: React.FC<ReportProps> = ({ startDate, endDate }) => {
-  const [lotes, setLotes] = useState<LoteConProducto[]>([]);
-  const [productos, setProductos] = useState<Producto[]>([]);
-  const [sales, setSales] = useState<VentaConDetalles[]>([]);
+  const [data, setData] = useState<ReporteInventarioData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -116,23 +100,15 @@ export const ReporteInventario: React.FC<ReportProps> = ({ startDate, endDate })
     (async () => {
       setLoading(true); setError(null);
       try {
-        const [lotesRes, prodRes, salesRes] = await Promise.all([
-          // Lotes activos (con stock) y su producto
-          supabase.from('lotes').select('*, productos(*)').gt('stock_lote', 0),
-          // Catálogo de productos
-          supabase.from('productos').select('*').order('nombre', { ascending: true }),
-          // Ventas del periodo (para rotación) — excluye canceladas
-          supabase.from('ventas').select('*, ventas_detalles(*, productos(*))')
-            .gte('fecha', startDate.toISOString()).lte('fecha', endDate.toISOString())
-            .neq('estado', 'cancelada'),
-        ]);
-        if (lotesRes.error) throw lotesRes.error;
-        if (prodRes.error) throw prodRes.error;
-        if (salesRes.error) throw salesRes.error;
+        // Valuación, caducidad, rotación y críticos se agregan en Postgres
+        // (fn_reporte_inventario); el front solo arma colores/proporciones.
+        const { data: rpc, error: rpcError } = await supabase.rpc('fn_reporte_inventario', {
+          p_start: startDate.toISOString(),
+          p_end: endDate.toISOString(),
+        });
+        if (rpcError) throw rpcError;
         if (!active) return;
-        setLotes((lotesRes.data as unknown as LoteConProducto[]) || []);
-        setProductos((prodRes.data as unknown as Producto[]) || []);
-        setSales((salesRes.data as unknown as VentaConDetalles[]) || []);
+        setData(rpc as ReporteInventarioData);
       } catch (err) {
         if (active) setError(err instanceof Error ? err.message : 'Error al cargar los datos de inventario.');
       } finally {
@@ -142,166 +118,32 @@ export const ReporteInventario: React.FC<ReportProps> = ({ startDate, endDate })
     return () => { active = false; };
   }, [startDate, endDate]);
 
-  // ── Valuación a costo + métricas de KPIs ───────────────────────────────────
-  const metrics = useMemo(() => {
-    const now = new Date(); now.setHours(0, 0, 0, 0);
-    const horizon = new Date(now); horizon.setDate(now.getDate() + EXPIRY_HORIZON_DAYS);
+  const metrics = data?.kpis ?? EMPTY_KPIS;
 
-    let totalValuation = 0;
-    let estimadosPorPrecio = 0;
-    let expiringCount = 0;
-    let expiringValue = 0;
-
-    for (const lot of lotes) {
-      const prod = lot.productos;
-      if (!prod) continue;
-      const cost = costoValuacion(lot.costo, prod.costo, prod.precio_publico);
-      const value = Number(lot.stock_lote) * cost;
-      totalValuation += value;
-      if ((Number(lot.costo) || 0) <= 0 && (Number(prod.costo) || 0) <= 0) estimadosPorPrecio++;
-
-      if (lot.fecha_caducidad) {
-        const exp = new Date(lot.fecha_caducidad + 'T00:00:00');
-        if (exp <= horizon) { expiringCount++; expiringValue += value; }
-      }
-    }
-
-    const lowStock = productos.filter(p => Number(p.stock) <= Number(p.stock_minimo)).length;
-
-    return {
-      totalValuation,
-      estimadosPorPrecio,
-      skus: productos.length,
-      lowStock,
-      expiringCount,
-      expiringValue,
-    };
-  }, [lotes, productos]);
-
-  // ── Valor de inventario por categoría (barras horizontales) ────────────────
   const porCategoria = useMemo(() => {
-    const map: Record<string, number> = {};
-    for (const lot of lotes) {
-      const prod = lot.productos;
-      if (!prod) continue;
-      const cat = prod.categoria || 'Sin categoría';
-      const cost = costoValuacion(lot.costo, prod.costo, prod.precio_publico);
-      map[cat] = (map[cat] || 0) + Number(lot.stock_lote) * cost;
-    }
-    const arr = Object.entries(map).map(([cat, total]) => ({ cat, total })).sort((a, b) => b.total - a.total);
+    const arr = data?.por_categoria ?? [];
     const max = arr.length ? arr[0].total : 1;
     return arr.map((x, i) => ({ ...x, pct: max > 0 ? (x.total / max) * 100 : 0, color: GREEN_SHADES[Math.min(i, GREEN_SHADES.length - 1)] }));
-  }, [lotes]);
+  }, [data]);
 
-  // ── Lotes por caducar: valor en riesgo por mes (próximos 6 meses) ──────────
   const expiryTimeline = useMemo(() => {
-    const now = new Date(); now.setHours(0, 0, 0, 0);
-    const bins: { label: string; count: number; value: number; key: string }[] = [];
-    const idx = new Map<string, number>();
-    for (let i = 0; i < TIMELINE_MONTHS; i++) {
-      const d = new Date(now.getFullYear(), now.getMonth() + i, 1);
-      const key = `${d.getFullYear()}-${d.getMonth()}`;
-      idx.set(key, i);
-      const label = `${MESES[d.getMonth()][0].toUpperCase()}${MESES[d.getMonth()].slice(1)}`;
-      bins.push({ label, count: 0, value: 0, key });
-    }
-    const limit = new Date(now.getFullYear(), now.getMonth() + TIMELINE_MONTHS, 1);
-
-    for (const lot of lotes) {
-      const prod = lot.productos;
-      if (!prod || !lot.fecha_caducidad) continue;
-      const exp = new Date(lot.fecha_caducidad + 'T00:00:00');
-      if (exp >= limit) continue; // fuera del horizonte de 6 meses
-      // Lotes ya vencidos o de este mes se agrupan en el primer bin.
-      const refKey = exp < now ? bins[0].key : `${exp.getFullYear()}-${exp.getMonth()}`;
-      const bi = idx.get(refKey);
-      if (bi === undefined) continue;
-      const cost = costoValuacion(lot.costo, prod.costo, prod.precio_publico);
-      bins[bi].value += Number(lot.stock_lote) * cost;
-      bins[bi].count += 1;
-    }
-
-    const max = Math.max(...bins.map(b => b.value), 1);
-    // Color por urgencia: primeros 2 meses rojo, 3-4 ámbar, resto verde
-    return bins.map((b, i) => ({
-      ...b,
+    const arr = data?.expiry ?? [];
+    const max = Math.max(...arr.map(b => b.value), 1);
+    return arr.map((b, i) => ({
+      label: `${MESES[b.mes][0].toUpperCase()}${MESES[b.mes].slice(1)}`,
+      count: b.count, value: b.value,
       h: (b.value / max) * 150,
-      color: i <= 1 ? 'var(--red)' : i <= 3 ? 'var(--amber)' : 'var(--ok)',
+      color: i <= 1 ? 'var(--red)' : i <= 3 ? 'var(--amber)' : 'var(--green)',
     }));
-  }, [lotes]);
+  }, [data]);
 
-  // ── Rotación por categoría (unidades vendidas ÷ stock en mano, periodo) ─────
-  // Nota: no se usa la fórmula contable (COGS/inv. promedio) porque el costo
-  // está casi todo en 0; se aproxima con unidades reales movidas vs. existencia.
   const rotacion = useMemo(() => {
-    const stockPorCat: Record<string, number> = {};
-    for (const p of productos) {
-      const cat = p.categoria || 'Sin categoría';
-      stockPorCat[cat] = (stockPorCat[cat] || 0) + Number(p.stock);
-    }
-    const vendidoPorCat: Record<string, number> = {};
-    for (const v of sales) for (const d of v.ventas_detalles || []) {
-      const cat = d.productos?.categoria || 'Sin categoría';
-      vendidoPorCat[cat] = (vendidoPorCat[cat] || 0) + Number(d.cantidad || 0);
-    }
-    const arr = Object.keys({ ...stockPorCat, ...vendidoPorCat })
-      .map(cat => {
-        const stock = stockPorCat[cat] || 0;
-        const vendido = vendidoPorCat[cat] || 0;
-        const ratio = stock > 0 ? vendido / stock : 0;
-        return { cat, ratio, vendido };
-      })
-      .filter(x => x.vendido > 0)
-      .sort((a, b) => b.ratio - a.ratio);
+    const arr = data?.rotacion ?? [];
     const max = arr.length ? arr[0].ratio : 1;
-    return arr.map((x, i) => ({
-      ...x,
-      pct: max > 0 ? (x.ratio / max) * 100 : 0,
-      color: i < 5 ? 'var(--green)' : 'oklch(0.80 0.09 82)',
-    }));
-  }, [productos, sales]);
+    return arr.map((x, i) => ({ ...x, pct: max > 0 ? (x.ratio / max) * 100 : 0, color: i < 5 ? 'var(--green)' : 'oklch(0.80 0.07 145)' }));
+  }, [data]);
 
-  // ── Productos críticos: stock bajo o lote por caducar ──────────────────────
-  const criticos = useMemo(() => {
-    const now = new Date(); now.setHours(0, 0, 0, 0);
-    const horizon = new Date(now); horizon.setDate(now.getDate() + EXPIRY_HORIZON_DAYS);
-
-    // Lote más próximo a caducar (dentro del horizonte) por producto
-    const proxCad = new Map<string, Date>();
-    for (const lot of lotes) {
-      if (!lot.productos || !lot.fecha_caducidad) continue;
-      const exp = new Date(lot.fecha_caducidad + 'T00:00:00');
-      if (exp > horizon) continue;
-      const prev = proxCad.get(lot.producto_id);
-      if (!prev || exp < prev) proxCad.set(lot.producto_id, exp);
-    }
-
-    type Critico = {
-      id: string; nombre: string; categoria: string; stock: number; minimo: number;
-      caducidad: Date | null; estado: 'critico' | 'bajo' | 'caducar'; orden: number;
-    };
-    const rows: Critico[] = [];
-
-    for (const p of productos) {
-      const stock = Number(p.stock);
-      const minimo = Number(p.stock_minimo);
-      const bajo = stock <= minimo;
-      const cad = proxCad.get(p.id) ?? null;
-      if (!bajo && !cad) continue;
-
-      const dias = cad ? Math.ceil((cad.getTime() - now.getTime()) / 86_400_000) : Infinity;
-      // Crítico: stock bajo Y a la vez por caducar, o caducidad <= 15 días
-      let estado: Critico['estado'];
-      if ((bajo && cad) || dias <= 15) estado = 'critico';
-      else if (bajo) estado = 'bajo';
-      else estado = 'caducar';
-      const orden = estado === 'critico' ? 0 : estado === 'bajo' ? 1 : 2;
-
-      rows.push({ id: p.id, nombre: p.nombre, categoria: p.categoria || 'Sin categoría', stock, minimo, caducidad: cad, estado, orden });
-    }
-
-    return rows.sort((a, b) => a.orden - b.orden || a.stock / (a.minimo || 1) - b.stock / (b.minimo || 1)).slice(0, 12);
-  }, [productos, lotes]);
+  const criticos = useMemo(() => data?.criticos ?? [], [data]);
 
   if (loading) {
     return (
@@ -321,8 +163,8 @@ export const ReporteInventario: React.FC<ReportProps> = ({ startDate, endDate })
     );
   }
 
-  const valorEntero = Math.trunc(metrics.totalValuation);
-  const valorCentavos = Math.round((metrics.totalValuation - valorEntero) * 100);
+  const valorEntero = Math.trunc(metrics.valuation);
+  const valorCentavos = Math.round((metrics.valuation - valorEntero) * 100);
 
   const kpis: KpiProps[] = [
     {
@@ -376,10 +218,10 @@ export const ReporteInventario: React.FC<ReportProps> = ({ startDate, endDate })
           <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
             <span className="h3">Valor de inventario por categoría</span>
             <span className="muted" style={{ fontSize: 12.5 }}>
-              {metrics.estimadosPorPrecio > 0 ? 'Valuado a costo (estimado a precio donde no hay costo) · MXN' : 'Valuado a costo · MXN'}
+              {metrics.estimados > 0 ? 'Valuado a costo (estimado a precio donde no hay costo) · MXN' : 'Valuado a costo · MXN'}
             </span>
           </div>
-          <span className="num" style={{ fontSize: 21, fontWeight: 800, color: 'var(--ink)' }}>{fmtMXN(metrics.totalValuation)}</span>
+          <span className="num" style={{ fontSize: 21, fontWeight: 800, color: 'var(--ink)' }}>{fmtMXN(metrics.valuation)}</span>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 15 }}>
           {porCategoria.length === 0 ? <span className="muted" style={{ fontSize: 13 }}>Sin inventario con stock activo.</span>
@@ -464,7 +306,7 @@ export const ReporteInventario: React.FC<ReportProps> = ({ startDate, endDate })
                     <td className="num" style={{ ...tdBase, textAlign: 'right', padding: '13px 12px', fontWeight: 700, color: stockColor }}>{fmtNum(r.stock)}</td>
                     <td className="num" style={{ ...tdBase, textAlign: 'right', padding: '13px 12px', color: 'var(--muted)' }}>{fmtNum(r.minimo)}</td>
                     <td className="num" style={{ ...tdBase, textAlign: 'right', padding: '13px 12px', color: r.caducidad ? (r.estado === 'critico' ? 'var(--red)' : 'oklch(0.5 0.12 70)') : 'var(--muted-2)', fontWeight: r.caducidad ? 600 : 400 }}>
-                      {r.caducidad ? fmtFecha(r.caducidad.toISOString().slice(0, 10)) : '—'}
+                      {r.caducidad ? fmtFecha(r.caducidad) : '—'}
                     </td>
                     <td style={{ ...tdBase, padding: '13px 0 13px 12px' }}>
                       {r.estado === 'critico' ? <span className="badge red"><span className="dot" />Crítico</span>

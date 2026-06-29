@@ -20,8 +20,10 @@ export const RegistrarPagoModal: React.FC<RegistrarPagoModalProps> = ({
   onClose,
   onSuccess,
 }) => {
+  const hoyISO = () => new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD en zona local
   const [monto, setMonto] = useState<string>('');
   const [metodo, setMetodo] = useState<'efectivo' | 'transferencia' | 'tarjeta' | 'debito'>('efectivo');
+  const [fecha, setFecha] = useState<string>(hoyISO());
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -30,6 +32,7 @@ export const RegistrarPagoModal: React.FC<RegistrarPagoModalProps> = ({
     if (isOpen) {
       setMonto(saldo.toString());
       setMetodo('efectivo');
+      setFecha(hoyISO());
       setError(null);
       setLoading(false);
     }
@@ -58,6 +61,7 @@ export const RegistrarPagoModal: React.FC<RegistrarPagoModalProps> = ({
         p_venta_id: ventaId,
         p_monto: montoNum,
         p_metodo: metodo,
+        p_fecha: new Date(fecha + 'T12:00:00').toISOString(),
       });
 
       if (rpcError) {
@@ -333,6 +337,23 @@ export const RegistrarPagoModal: React.FC<RegistrarPagoModalProps> = ({
               <option value="tarjeta">Tarjeta de Crédito</option>
               <option value="debito">Tarjeta de Débito</option>
             </select>
+          </div>
+
+          {/* Fecha del pago */}
+          <div>
+            <label htmlFor="fecha-pago" className="label">Fecha del pago</label>
+            <input
+              id="fecha-pago"
+              className="input"
+              type="date"
+              value={fecha}
+              max={hoyISO()}
+              onChange={e => setFecha(e.target.value)}
+              disabled={loading}
+            />
+            <div style={{ marginTop: 6, fontSize: '11px', color: 'var(--muted)' }}>
+              Por defecto hoy; cámbiala si el cliente pagó antes (ej. depósito de días pasados).
+            </div>
           </div>
 
           {/* Actions */}

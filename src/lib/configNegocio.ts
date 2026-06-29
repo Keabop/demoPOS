@@ -19,6 +19,9 @@ export interface ConfigNegocio {
   monedaIso: string;
   locale: string;
   ivaDefault: number;
+  impresoraTickets: string;     // impresora_tickets (QZ Tray)
+  impresoraDocumentos: string;  // impresora_documentos (QZ Tray)
+  anchoTicket: number;          // ancho_ticket en mm (58/80)
 }
 
 export const CONFIG_DEFAULT: ConfigNegocio = {
@@ -32,11 +35,14 @@ export const CONFIG_DEFAULT: ConfigNegocio = {
   telefono: DATOS_NEGOCIO.telefono,
   telPagare: DATOS_NEGOCIO.telPagare,
   email: DATOS_NEGOCIO.email,
-  logoUrl: '/logo-demo.svg',
+  logoUrl: '/logo-demo.svg', // asset de branding de la demo (coincide con el DEFAULT del schema/seed PGlite)
   monedaSimbolo: '$',
   monedaIso: 'MXN',
   locale: 'es-MX',
   ivaDefault: 0,
+  impresoraTickets: '',
+  impresoraDocumentos: '',
+  anchoTicket: 58,
 };
 
 /** Forma de la fila de la tabla `configuracion`. */
@@ -56,6 +62,9 @@ export interface ConfiguracionRow {
   moneda_iso?: string | null;
   locale?: string | null;
   iva_default?: number | string | null;
+  impresora_tickets?: string | null;
+  impresora_documentos?: string | null;
+  ancho_ticket?: number | string | null;
 }
 
 export function configDesdeRow(row: ConfiguracionRow | null | undefined): ConfigNegocio {
@@ -76,6 +85,9 @@ export function configDesdeRow(row: ConfiguracionRow | null | undefined): Config
     monedaIso: row.moneda_iso || CONFIG_DEFAULT.monedaIso,
     locale: row.locale || CONFIG_DEFAULT.locale,
     ivaDefault: row.iva_default != null ? Number(row.iva_default) : CONFIG_DEFAULT.ivaDefault,
+    impresoraTickets: row.impresora_tickets || CONFIG_DEFAULT.impresoraTickets,
+    impresoraDocumentos: row.impresora_documentos || CONFIG_DEFAULT.impresoraDocumentos,
+    anchoTicket: row.ancho_ticket != null ? Number(row.ancho_ticket) : CONFIG_DEFAULT.anchoTicket,
   };
 }
 

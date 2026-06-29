@@ -1,6 +1,10 @@
 import React, { useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { Icon } from '../../components/Icon';
+import { PermisosEditor, type PerfilForm } from './PermisosEditor';
+import { permisosDePlantilla, derivarRol } from '../../lib/capacidades';
+import { REGLAS_PASSWORD, passwordCumple } from '../../lib/password';
+import { extraerMensajeError } from '../../lib/funcionesError';
 
 interface CrearUsuarioModalProps {
   isOpen: boolean;
@@ -8,59 +12,8 @@ interface CrearUsuarioModalProps {
   onCreated?: () => void;
 }
 
-type Rol = 'admin' | 'vendedor' | 'visitante';
-
-const ROLES: { value: Rol; label: string }[] = [
-  { value: 'vendedor', label: 'Vendedor' },
-  { value: 'visitante', label: 'Visitante' },
-  { value: 'admin', label: 'Administrador' },
-];
-
-// Requisitos de contraseña (deben coincidir con la validación de la Edge Function
-// `crear-usuario` y con la política configurada en Supabase Auth).
-const REGLAS_PASSWORD: { label: string; test: (pw: string) => boolean }[] = [
-  { label: 'Mínimo 8 caracteres', test: (pw) => pw.length >= 8 },
-  { label: 'Una letra mayúscula (A-Z)', test: (pw) => /[A-Z]/.test(pw) },
-  { label: 'Una letra minúscula (a-z)', test: (pw) => /[a-z]/.test(pw) },
-  { label: 'Un número (0-9)', test: (pw) => /[0-9]/.test(pw) },
-];
-
-const passwordCumple = (pw: string): boolean => REGLAS_PASSWORD.every((r) => r.test(pw));
-
-// Forma de la respuesta de error que puede traer functions.invoke.
-interface ContextConJson {
-  json: () => Promise<unknown>;
-}
-
-function tieneContextJson(value: unknown): value is { context: ContextConJson } {
-  if (typeof value !== 'object' || value === null) return false;
-  const ctx = (value as { context?: unknown }).context;
-  return (
-    typeof ctx === 'object' &&
-    ctx !== null &&
-    typeof (ctx as { json?: unknown }).json === 'function'
-  );
-}
-
-// Intenta extraer el mensaje de error legible de un FunctionsHttpError.
-async function extraerMensajeError(error: unknown): Promise<string> {
-  if (tieneContextJson(error)) {
-    try {
-      const cuerpo = await error.context.json();
-      if (
-        typeof cuerpo === 'object' &&
-        cuerpo !== null &&
-        typeof (cuerpo as { error?: unknown }).error === 'string'
-      ) {
-        return (cuerpo as { error: string }).error;
-      }
-    } catch {
-      // Ignorar y caer al mensaje genérico de abajo.
-    }
-  }
-  if (error instanceof Error) return error.message;
-  return 'Error al crear el usuario.';
-}
+const PL_VENDEDOR = permisosDePlantilla('vendedor')!;
+const perfilInicial = (): PerfilForm => ({ plantilla: 'vendedor', etiqueta: PL_VENDEDOR.etiqueta, permisos: { ...PL_VENDEDOR.permisos } });
 
 export const CrearUsuarioModal: React.FC<CrearUsuarioModalProps> = ({
   isOpen,
@@ -70,7 +23,7 @@ export const CrearUsuarioModal: React.FC<CrearUsuarioModalProps> = ({
   const [nombre, setNombre] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [rol, setRol] = useState<Rol>('vendedor');
+  const [perfil, setPerfil] = useState<PerfilForm>(perfilInicial);
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
@@ -81,7 +34,7 @@ export const CrearUsuarioModal: React.FC<CrearUsuarioModalProps> = ({
     setNombre('');
     setEmail('');
     setPassword('');
-    setRol('vendedor');
+    setPerfil(perfilInicial());
     setErrorMsg(null);
     setSuccessMsg(null);
   };
@@ -116,17 +69,22 @@ export const CrearUsuarioModal: React.FC<CrearUsuarioModalProps> = ({
     setLoading(true);
 
     try {
+      const rol = derivarRol(perfil);
+      const etiqueta = perfil.etiqueta.trim() || permisosDePlantilla(perfil.plantilla)?.etiqueta || 'Usuario';
       const { error } = await supabase.functions.invoke('crear-usuario', {
         body: {
           nombre: nombreLimpio,
           email: emailLimpio,
           password,
           rol,
+          etiqueta,
+          plantilla: perfil.plantilla,
+          permisos: perfil.permisos,
         },
       });
 
       if (error) {
-        const mensaje = await extraerMensajeError(error);
+        const mensaje = await extraerMensajeError(error, 'Error al crear el usuario.');
         throw new Error(mensaje);
       }
 
@@ -134,7 +92,7 @@ export const CrearUsuarioModal: React.FC<CrearUsuarioModalProps> = ({
       setNombre('');
       setEmail('');
       setPassword('');
-      setRol('vendedor');
+      setPerfil(perfilInicial());
       onCreated?.();
     } catch (err) {
       setErrorMsg(
@@ -249,7 +207,7 @@ export const CrearUsuarioModal: React.FC<CrearUsuarioModalProps> = ({
           transition: color 0.12s;
         }
         .pw-req.ok {
-          color: var(--ok-2);
+          color: var(--green, oklch(0.5 0.15 150));
         }
         .pw-req-dot {
           width: 14px;
@@ -275,10 +233,10 @@ export const CrearUsuarioModal: React.FC<CrearUsuarioModalProps> = ({
           align-items: center;
           gap: 10px;
           padding: 12px 16px;
-          background: var(--ok-soft);
-          border: 1px solid var(--ok-line);
+          background: var(--green-soft, oklch(0.95 0.05 150));
+          border: 1px solid oklch(0.8 0.12 150);
           border-radius: var(--radius-sm);
-          color: var(--ok-2);
+          color: var(--green, oklch(0.5 0.15 150));
           font-size: 13px;
         }
         .spinner {
@@ -374,22 +332,7 @@ export const CrearUsuarioModal: React.FC<CrearUsuarioModalProps> = ({
               </ul>
             </div>
 
-            <div className="form-group">
-              <label className="label" htmlFor="user-rol">Rol *</label>
-              <select
-                id="user-rol"
-                className="input"
-                value={rol}
-                onChange={(e) => setRol(e.target.value as Rol)}
-                disabled={loading}
-              >
-                {ROLES.map((r) => (
-                  <option key={r.value} value={r.value}>
-                    {r.label}
-                  </option>
-                ))}
-              </select>
-            </div>
+            <PermisosEditor value={perfil} onChange={setPerfil} disabled={loading} />
           </div>
 
           <div className="modal-footer">

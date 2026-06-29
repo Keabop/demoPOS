@@ -2,12 +2,10 @@ import React, { useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { Icon } from '../../components/Icon';
 import { NumberInput } from '../../components/NumberInput';
-import { margen } from '../../lib/money';
+import { margen, round2 } from '../../lib/money';
 import { fmtMXN } from '../../lib/format';
+import { CATEGORIAS_PRODUCTOS } from '../../lib/categorias';
 import type { Producto } from '../../types';
-
-// Categorías del giro (mismas que en el alta de producto).
-const CATEGORIAS = ['Semillas', 'Herbicidas', 'Insecticidas', 'Foliares', 'Fungicidas', 'Abono'];
 
 interface Props {
   producto: Producto;
@@ -21,7 +19,9 @@ export const EditarProductoModal: React.FC<Props> = ({ producto, onClose, onSave
   const [categoria, setCategoria] = useState(producto.categoria);
   const [unidad, setUnidad] = useState(producto.unidad);
   const [precioPublico, setPrecioPublico] = useState(producto.precio_publico);
-  const [precioMayoreo, setPrecioMayoreo] = useState(producto.precio_mayoreo);
+  const [precioCredito, setPrecioCredito] = useState(producto.precio_credito ?? 0);
+  const [precioSubdistribuidor, setPrecioSubdistribuidor] = useState(producto.precio_subdistribuidor ?? 0);
+  const [ieps, setIeps] = useState(Math.round(Number(producto.tasa_ieps || 0) * 100)); // a %
   const [costo, setCosto] = useState(producto.costo);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -40,7 +40,9 @@ export const EditarProductoModal: React.FC<Props> = ({ producto, onClose, onSave
         categoria,
         unidad: unidad.trim(),
         precio_publico: precioPublico,
-        precio_mayoreo: precioMayoreo || precioPublico,
+        precio_credito: precioCredito || precioPublico,
+        precio_subdistribuidor: precioSubdistribuidor || precioPublico,
+        tasa_ieps: round2(Number(ieps) / 100),
         costo,
       }).eq('id', producto.id);
       if (upErr) throw upErr;
@@ -92,19 +94,30 @@ export const EditarProductoModal: React.FC<Props> = ({ producto, onClose, onSave
           <div>
             <div className="label">Categoría</div>
             <select className="input" value={categoria} onChange={e => setCategoria(e.target.value)}>
-              {!CATEGORIAS.includes(categoria) && categoria && <option value={categoria}>{categoria}</option>}
-              {CATEGORIAS.map(c => <option key={c} value={c}>{c}</option>)}
+              {!CATEGORIAS_PRODUCTOS.includes(categoria) && categoria && <option value={categoria}>{categoria}</option>}
+              {CATEGORIAS_PRODUCTOS.map(c => <option key={c} value={c}>{c}</option>)}
             </select>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <div className="label">Precios de venta</div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
             <div>
-              <div className="label">Precio al Público ($) *</div>
-              <NumberInput className="input num" required value={precioPublico} onChange={setPrecioPublico} />
+              <div className="label">Contado *</div>
+              <NumberInput className="input num" value={precioPublico} onChange={setPrecioPublico} />
             </div>
             <div>
-              <div className="label">Precio Mayoreo ($)</div>
-              <NumberInput className="input num" value={precioMayoreo} onChange={setPrecioMayoreo} />
+              <div className="label">Crédito</div>
+              <NumberInput className="input num" value={precioCredito} onChange={setPrecioCredito} />
+            </div>
+            <div>
+              <div className="label">Subdistribuidor</div>
+              <NumberInput className="input num" value={precioSubdistribuidor} onChange={setPrecioSubdistribuidor} />
+            </div>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <div>
+              <div className="label">IEPS (%)</div>
+              <NumberInput className="input num" value={ieps} onChange={setIeps} />
             </div>
           </div>
 
@@ -114,7 +127,7 @@ export const EditarProductoModal: React.FC<Props> = ({ producto, onClose, onSave
               <NumberInput className="input num" value={costo} onChange={setCosto} />
             </div>
             {precioPublico > 0 && (
-              <div className="label" style={{ display: 'flex', justifyContent: 'space-between', color: m.utilidad >= 0 ? 'var(--ok-2)' : 'var(--red)', marginBottom: 8 }}>
+              <div className="label" style={{ display: 'flex', justifyContent: 'space-between', color: m.utilidad >= 0 ? 'var(--green-2)' : 'var(--red)', marginBottom: 8 }}>
                 <span>Margen</span>
                 <span className="num">{m.utilidad >= 0 ? '+' : ''}{fmtMXN(m.utilidad)} · {m.porcentaje}%</span>
               </div>

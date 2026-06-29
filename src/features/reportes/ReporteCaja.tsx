@@ -1,36 +1,12 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useId } from 'react';
 import { supabase } from '../../lib/supabase';
 import { Icon } from '../../components/Icon';
 import { fmtMXN } from '../../lib/format';
-import type { MovimientoCaja } from '../../types';
+import type { ReporteCajaData } from '../../types';
 
 interface ReportProps {
   startDate: Date;
   endDate: Date;
-}
-
-interface MovimientoCajaConVendedor extends MovimientoCaja {
-  vendedor?: { nombre: string } | null;
-}
-
-interface ReconstructedShift {
-  id: string;
-  vendedorName: string;
-  vendedorId: string;
-  apertura: MovimientoCajaConVendedor;
-  cierre: MovimientoCajaConVendedor | null;
-  movements: MovimientoCajaConVendedor[];
-  openingCash: number;
-  countedCash: number;
-  expectedCash: number;
-  discrepancy: number;
-  manualIngresos: number;
-  manualEgresos: number;
-  salesTotal: number;       // ventas del turno (todos los métodos)
-  abonosTotal: number;      // cobranza a crédito del turno (todos los métodos)
-  efectivoSistema: number;  // efectivo físico esperado (SOLO categoría 'caja')
-  notes: string;
-  durationMs: number | null;
 }
 
 // ── Helpers compartidos con ReporteVentas (estilo unificado) ──────────────────
@@ -55,9 +31,8 @@ interface KpiProps {
   label: string; value: string; icon: string; iconBg: string; iconColor: string;
   spark: number[]; sub?: React.ReactNode; valueColor?: string;
 }
-const idCounter = { n: 0 };
 const KpiCard: React.FC<KpiProps> = ({ label, value, icon, iconBg, iconColor, spark, sub, valueColor }) => {
-  const gid = useMemo(() => `cks-${idCounter.n++}`, []);
+  const gid = `cks-${useId().replace(/:/g, '')}`;
   const sp = sparkPath(spark);
   return (
     <div className="card ag-rise" style={{ padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -121,177 +96,80 @@ const getDurationString = (ms: number | null) => {
   return hours === 0 ? `${minutes}m` : `${hours}h ${minutes}m`;
 };
 
-const fmtHora = (dateStr?: string) => {
+const fmtHora = (dateStr?: string | null) => {
   if (!dateStr) return '—';
   return new Date(dateStr).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', hour12: false });
 };
-const fmtFecha = (dateStr?: string) => {
+const fmtFecha = (dateStr?: string | null) => {
   if (!dateStr) return '—';
   return new Date(dateStr).toLocaleDateString('es-MX', { day: '2-digit', month: 'short' });
 };
 
 interface TipoBadge { label: string; cls: string; positive: boolean }
-const tipoBadge = (m: MovimientoCajaConVendedor): TipoBadge => {
-  if (m.tipo === 'apertura') return { label: 'Apertura', cls: 'gray', positive: true };
-  if (m.tipo === 'venta') return { label: 'Venta', cls: 'ok', positive: true };
-  if (m.tipo === 'abono') return { label: 'Abono', cls: 'ok', positive: true };
-  if (m.tipo === 'ingreso') return { label: 'Ingreso', cls: 'ok', positive: true };
-  // egreso (el corte es egreso con es_corte; aquí se filtra antes)
+const tipoBadge = (tipo: string): TipoBadge => {
+  if (tipo === 'apertura') return { label: 'Apertura', cls: 'gray', positive: true };
+  if (tipo === 'venta') return { label: 'Venta', cls: 'green', positive: true };
+  if (tipo === 'abono') return { label: 'Abono', cls: 'green', positive: true };
+  if (tipo === 'ingreso') return { label: 'Ingreso', cls: 'green', positive: true };
   return { label: 'Egreso', cls: 'red', positive: false };
 };
 
+const EMPTY_STATS = { fondos: 0, ventas: 0, abonos: 0, ingresosManual: 0, egresos: 0, enCaja: 0, ingresosTotales: 0, netDiscrepancy: 0, ventaCount: 0 };
+
 export const ReporteCaja: React.FC<ReportProps> = ({ startDate, endDate }) => {
-  const [movements, setMovements] = useState<MovimientoCajaConVendedor[]>([]);
+  const [data, setData] = useState<ReporteCajaData | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
-    const fetchData = async () => {
+    (async () => {
+      setLoading(true); setError(null);
       try {
-        setLoading(true);
-        setError(null);
-        const { data, error: queryError } = await supabase
-          .from('movimientos_caja')
-          .select(`*, vendedor:vendedor_id ( nombre )`)
-          .gte('fecha', startDate.toISOString())
-          .lte('fecha', endDate.toISOString())
-          .order('fecha', { ascending: true });
-
-        if (queryError) throw queryError;
+        // La reconstrucción de turnos, KPIs e ingresos por hora se hacen en
+        // Postgres (fn_reporte_caja); el front solo arma derivados pequeños.
+        const { data: rpc, error: rpcError } = await supabase.rpc('fn_reporte_caja', {
+          p_start: startDate.toISOString(),
+          p_end: endDate.toISOString(),
+        });
+        if (rpcError) throw rpcError;
         if (!active) return;
-        setMovements((data as MovimientoCajaConVendedor[]) || []);
+        setData(rpc as ReporteCajaData);
       } catch (err) {
         if (active) setError(err instanceof Error ? err.message : 'Error al cargar los movimientos de caja.');
       } finally {
         if (active) setLoading(false);
       }
-    };
-    fetchData();
+    })();
     return () => { active = false; };
   }, [startDate, endDate]);
 
-  // Reconstrucción cronológica de turnos.
-  // El cierre/corte se identifica por el flag booleano es_corte (NO por texto).
-  const shifts = useMemo<ReconstructedShift[]>(() => {
-    const reconstructed: ReconstructedShift[] = [];
-    let currentShift: { apertura: MovimientoCajaConVendedor; movements: MovimientoCajaConVendedor[] } | null = null;
+  const shifts = useMemo(() => data?.shifts ?? [], [data]);
+  const stats = data?.stats ?? EMPTY_STATS;
+  const closedShifts = useMemo(() => shifts.filter(s => s.isClosed), [shifts]);
+  const activeShift = useMemo(() => shifts.find(s => !s.isClosed) ?? null, [shifts]);
 
-    const finalizeShift = (
-      apertura: MovimientoCajaConVendedor,
-      cierre: MovimientoCajaConVendedor | null,
-      movs: MovimientoCajaConVendedor[],
-    ): ReconstructedShift => {
-      const openingCash = Number(apertura.monto) || 0;
-      const manualIngresos = movs.filter(m => m.tipo === 'ingreso').reduce((s, m) => s + (Number(m.monto) || 0), 0);
-      const manualEgresos = movs.filter(m => m.tipo === 'egreso').reduce((s, m) => s + (Number(m.monto) || 0), 0);
-      const salesTotal = movs.filter(m => m.tipo === 'venta').reduce((s, m) => s + (Number(m.monto) || 0), 0);
-      const abonosTotal = movs.filter(m => m.tipo === 'abono').reduce((s, m) => s + (Number(m.monto) || 0), 0);
-      // Efectivo físico esperado: SOLO ventas/abonos en efectivo (categoría 'caja').
-      const efectivoVentasAbonos = movs
-        .filter(m => (m.tipo === 'venta' || m.tipo === 'abono') && m.categoria === 'caja')
-        .reduce((s, m) => s + (Number(m.monto) || 0), 0);
-      const efectivoSistema = openingCash + efectivoVentasAbonos + manualIngresos - manualEgresos;
-      const calculatedExpected = efectivoSistema;
+  const sparkData = useMemo(() => ({
+    enCaja: shifts.map(s => s.efectivoSistema),
+    ingresos: shifts.map(s => s.salesTotal + s.abonosTotal + s.manualIngresos),
+    egresos: shifts.map(s => s.manualEgresos),
+    arqueo: closedShifts.map(s => s.discrepancy),
+  }), [shifts, closedShifts]);
 
-      let expectedCash = calculatedExpected;
-      let countedCash = cierre ? (Number(cierre.monto) || 0) : calculatedExpected;
-      let notes = '';
-
-      if (cierre && cierre.descripcion) {
-        const desc = cierre.descripcion;
-        const expMatch = desc.match(/Efectivo esperado:\s*\$?([\d,.-]+)/i);
-        const countMatch = desc.match(/Efectivo contado:\s*\$?([\d,.-]+)/i);
-        const notesMatch = desc.match(/Notas:\s*(.*)/i);
-        if (expMatch) expectedCash = parseFloat(expMatch[1].replace(/,/g, ''));
-        if (countMatch) countedCash = parseFloat(countMatch[1].replace(/,/g, ''));
-        if (notesMatch) notes = notesMatch[1].trim();
-      }
-
-      const discrepancy = cierre ? countedCash - expectedCash : 0;
-      let durationMs: number | null = null;
-      if (apertura.fecha && cierre && cierre.fecha) {
-        durationMs = new Date(cierre.fecha).getTime() - new Date(apertura.fecha).getTime();
-      }
-
-      return {
-        id: apertura.id,
-        vendedorName: apertura.vendedor?.nombre || 'Sin asignar',
-        vendedorId: apertura.vendedor_id,
-        apertura, cierre, movements: movs,
-        openingCash, countedCash, expectedCash, discrepancy,
-        manualIngresos, manualEgresos, salesTotal, abonosTotal, efectivoSistema, notes, durationMs,
-      };
-    };
-
-    for (const m of movements) {
-      if (m.tipo === 'apertura') {
-        if (currentShift) reconstructed.push(finalizeShift(currentShift.apertura, null, currentShift.movements));
-        currentShift = { apertura: m, movements: [] };
-      } else if (m.tipo === 'egreso' && m.es_corte === true) {
-        if (currentShift) {
-          reconstructed.push(finalizeShift(currentShift.apertura, m, currentShift.movements));
-          currentShift = null;
-        }
-      } else if (currentShift) {
-        currentShift.movements.push(m);
-      }
-    }
-    if (currentShift) reconstructed.push(finalizeShift(currentShift.apertura, null, currentShift.movements));
-    return reconstructed;
-  }, [movements]);
-
-  const closedShifts = useMemo(() => shifts.filter(s => s.cierre !== null), [shifts]);
-  // Turno abierto = última apertura sin corte posterior
-  const activeShift = useMemo(() => shifts.find(s => s.cierre === null) ?? null, [shifts]);
-
-  // KPIs del período (datos reales de movimientos_caja)
-  const stats = useMemo(() => {
-    const fondos = shifts.reduce((s, sh) => s + sh.openingCash, 0);
-    const ventas = shifts.reduce((s, sh) => s + sh.salesTotal, 0);
-    const abonos = shifts.reduce((s, sh) => s + sh.abonosTotal, 0);
-    const ingresosManual = shifts.reduce((s, sh) => s + sh.manualIngresos, 0);
-    const egresos = shifts.reduce((s, sh) => s + sh.manualEgresos, 0);
-    // Efectivo en caja (sistema) = SOLO efectivo (categoría 'caja') de cada turno.
-    const enCaja = shifts.reduce((s, sh) => s + sh.efectivoSistema, 0);
-    // Ingresos del período = ventas (todos los métodos) + cobranza de crédito + ingresos manuales.
-    const ingresosTotales = ventas + abonos + ingresosManual;
-    const netDiscrepancy = closedShifts.reduce((s, sh) => s + sh.discrepancy, 0);
-    const ventaCount = shifts.reduce((s, sh) => s + sh.movements.filter(m => m.tipo === 'venta' || m.tipo === 'abono').length, 0);
-    return { fondos, ventas, abonos, ingresosManual, egresos, enCaja, ingresosTotales, netDiscrepancy, ventaCount };
-  }, [shifts, closedShifts]);
-
-  // Sparklines basadas en los turnos del período (orden cronológico)
-  const sparkData = useMemo(() => {
-    const ordered = [...shifts];
-    return {
-      enCaja: ordered.map(s => s.efectivoSistema),
-      ingresos: ordered.map(s => s.salesTotal + s.abonosTotal + s.manualIngresos),
-      egresos: ordered.map(s => s.manualEgresos),
-      arqueo: closedShifts.map(s => s.discrepancy),
-    };
-  }, [shifts, closedShifts]);
-
-  // Ingresos por hora del día (cobros tipo 'venta') — datos reales agregados por hora
   const hourly = useMemo(() => {
-    const buckets = new Map<number, number>();
-    for (const m of movements) {
-      if ((m.tipo !== 'venta' && m.tipo !== 'abono') || !m.fecha) continue;
-      const h = new Date(m.fecha).getHours();
-      buckets.set(h, (buckets.get(h) || 0) + (Number(m.monto) || 0));
-    }
-    const hours = Array.from(buckets.keys());
-    if (hours.length === 0) return { rows: [], max: 0, peak: null as { hour: number; total: number } | null };
+    const arr = data?.hourly ?? [];
+    if (arr.length === 0) return { rows: [] as { hour: number; total: number }[], max: 0, peak: null as { hour: number; total: number } | null };
+    const byHour = new Map<number, number>();
+    for (const h of arr) byHour.set(h.hour, Number(h.total) || 0);
+    const hours = arr.map(h => h.hour);
     const minH = Math.min(...hours), maxH = Math.max(...hours);
     const rows: { hour: number; total: number }[] = [];
-    for (let h = minH; h <= maxH; h++) rows.push({ hour: h, total: buckets.get(h) || 0 });
+    for (let h = minH; h <= maxH; h++) rows.push({ hour: h, total: byHour.get(h) || 0 });
     const max = Math.max(...rows.map(r => r.total), 1);
     const peak = rows.reduce((a, b) => (b.total > a.total ? b : a), rows[0]);
     return { rows, max, peak: peak.total > 0 ? peak : null };
-  }, [movements]);
+  }, [data]);
 
-  // Composición del flujo de caja por concepto. Tonos de la marca.
-  // (Tras M1, movimientos_caja incluye cobranza y ventas no-efectivo con método/categoría.)
   const composicion = useMemo(() => {
     const items = [
       { label: 'Ventas cobradas', value: stats.ventas, color: 'var(--green)' },
@@ -304,14 +182,8 @@ export const ReporteCaja: React.FC<ReportProps> = ({ startDate, endDate }) => {
     return { items: items.map(i => ({ ...i, pct: max > 0 ? (i.value / max) * 100 : 0 })) };
   }, [stats]);
 
-  // Movimientos a mostrar en la tabla: turno activo si existe, si no el último cerrado
-  const tableShift = activeShift ?? (closedShifts.length ? closedShifts[closedShifts.length - 1] : null);
-  const tableMovements = useMemo<MovimientoCajaConVendedor[]>(() => {
-    if (!tableShift) return [];
-    const rows: MovimientoCajaConVendedor[] = [tableShift.apertura, ...tableShift.movements];
-    if (tableShift.cierre) rows.push(tableShift.cierre);
-    return rows;
-  }, [tableShift]);
+  const tableShift = data?.table_shift ?? null;
+  const tableMovements = useMemo(() => data?.table_movimientos ?? [], [data]);
 
   if (loading) {
     return (
@@ -352,12 +224,12 @@ export const ReporteCaja: React.FC<ReportProps> = ({ startDate, endDate }) => {
       {/* Turno activo */}
       {activeShift && (
         <div className="card ag-rise" style={{ padding: '16px 20px', display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
-          <span className="badge ok"><span className="dot" />Turno abierto</span>
+          <span className="badge green"><span className="dot" />Turno abierto</span>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--ink-2)' }}>
             <Icon name="cash" size={15} color="var(--muted)" /><strong style={{ fontWeight: 600 }}>Caja · {activeShift.vendedorName}</strong>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--muted)' }}>
-            <Icon name="clock" size={15} color="var(--muted)" />Apertura <span className="num" style={{ color: 'var(--ink-2)', fontWeight: 600 }}>{fmtHora(activeShift.apertura.fecha)}</span> · fondo <span className="num" style={{ color: 'var(--ink-2)', fontWeight: 600 }}>{fmtMXN(activeShift.openingCash)}</span>
+            <Icon name="clock" size={15} color="var(--muted)" />Apertura <span className="num" style={{ color: 'var(--ink-2)', fontWeight: 600 }}>{fmtHora(activeShift.aperturaFecha)}</span> · fondo <span className="num" style={{ color: 'var(--ink-2)', fontWeight: 600 }}>{fmtMXN(activeShift.openingCash)}</span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--muted)', marginLeft: 'auto' }}>
             <Icon name="trending-up" size={15} color="var(--green-2)" />Efectivo en caja <span className="num" style={{ color: 'var(--green-2)', fontWeight: 700 }}>{fmtMXN(activeShift.expectedCash)}</span>
@@ -385,7 +257,7 @@ export const ReporteCaja: React.FC<ReportProps> = ({ startDate, endDate }) => {
         <KpiCard
           label="Diferencia de arqueo" icon="alert" iconBg="var(--amber-soft)" iconColor="var(--amber)"
           value={`${stats.netDiscrepancy < 0 ? '−' : stats.netDiscrepancy > 0 ? '+' : ''}${fmtMXN(Math.abs(stats.netDiscrepancy))}`}
-          valueColor={stats.netDiscrepancy < 0 ? 'oklch(0.5 0.12 70)' : stats.netDiscrepancy > 0 ? 'var(--ok-2)' : 'var(--ink)'}
+          valueColor={stats.netDiscrepancy < 0 ? 'oklch(0.5 0.12 70)' : stats.netDiscrepancy > 0 ? 'var(--green-2)' : 'var(--ink)'}
           spark={sparkData.arqueo}
           sub={`${closedShifts.length} ${closedShifts.length === 1 ? 'corte' : 'cortes'} · contado vs sistema`}
         />
@@ -466,13 +338,13 @@ export const ReporteCaja: React.FC<ReportProps> = ({ startDate, endDate }) => {
                   <span style={{ width: 30, height: 30, borderRadius: 999, background: AVATARS[i % AVATARS.length].bg, color: AVATARS[i % AVATARS.length].color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, flex: 'none' }}>{initialsOf(s.vendedorName)}</span>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 1, flex: 1, minWidth: 0 }}>
                     <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.vendedorName}</span>
-                    <span className="muted" style={{ fontSize: 11.5 }}>{fmtFecha(s.apertura.fecha)} · {fmtHora(s.apertura.fecha)}–{fmtHora(s.cierre?.fecha)}</span>
+                    <span className="muted" style={{ fontSize: 11.5 }}>{fmtFecha(s.aperturaFecha)} · {fmtHora(s.aperturaFecha)}–{fmtHora(s.cierreFecha)}</span>
                   </div>
                   <span className="num" style={{ fontSize: 13, fontWeight: 700, color: 'var(--ink)', flex: 'none' }}>{fmtMXN(s.countedCash)}</span>
                   {cuadrado ? (
-                    <span className="badge ok" style={{ width: 84, justifyContent: 'center' }}><span className="dot" />Cuadrado</span>
+                    <span className="badge green" style={{ width: 84, justifyContent: 'center' }}><span className="dot" />Cuadrado</span>
                   ) : s.discrepancy > 0 ? (
-                    <span className="badge ok" style={{ width: 84, justifyContent: 'center' }}><span className="dot" />+{fmtMXN(s.discrepancy)}</span>
+                    <span className="badge green" style={{ width: 84, justifyContent: 'center' }}><span className="dot" />+{fmtMXN(s.discrepancy)}</span>
                   ) : (
                     <span className="badge amber" style={{ width: 84, justifyContent: 'center' }}><span className="dot" />−{fmtMXN(Math.abs(s.discrepancy))}</span>
                   )}
@@ -485,7 +357,7 @@ export const ReporteCaja: React.FC<ReportProps> = ({ startDate, endDate }) => {
         <div className="card ag-rise2" style={{ padding: '20px 22px', display: 'flex', flexDirection: 'column', gap: 16, minWidth: 0 }}>
           <div style={cardHead}>
             <span className="h3">Movimientos del turno</span>
-            <span className="muted" style={{ fontSize: 12.5 }}>{tableShift ? `${activeShift ? 'Turno abierto' : 'Último corte'} · ${tableShift.vendedorName}` : '—'}</span>
+            <span className="muted" style={{ fontSize: 12.5 }}>{tableShift ? `${tableShift.isActive ? 'Turno abierto' : 'Último corte'} · ${tableShift.vendedorName}` : '—'}</span>
           </div>
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 440 }}>
@@ -503,7 +375,7 @@ export const ReporteCaja: React.FC<ReportProps> = ({ startDate, endDate }) => {
                   const isLast = i === arr.length - 1;
                   const bdr = isLast ? 'none' : '1px solid var(--line-2)';
                   const isCorte = m.tipo === 'egreso' && m.es_corte === true;
-                  const badge = isCorte ? { label: 'Corte', cls: 'gray', positive: false } : tipoBadge(m);
+                  const badge = isCorte ? { label: 'Corte', cls: 'gray', positive: false } : tipoBadge(m.tipo);
                   const monto = Number(m.monto) || 0;
                   const concepto = m.descripcion?.replace(/^Corte de caja\s*-\s*/i, 'Corte de caja · ').split(',')[0] || '—';
                   return (
@@ -511,7 +383,7 @@ export const ReporteCaja: React.FC<ReportProps> = ({ startDate, endDate }) => {
                       <td className="num" style={{ padding: '11px 12px 11px 0', borderBottom: bdr, fontSize: 12.5, color: 'var(--muted-2)' }}>{fmtHora(m.fecha)}</td>
                       <td style={{ padding: '11px 12px', borderBottom: bdr }}><span className={`badge ${badge.cls}`}>{badge.label}</span></td>
                       <td style={{ padding: '11px 12px', borderBottom: bdr, fontSize: 13, color: 'var(--ink-2)', maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={m.descripcion || ''}>{concepto}</td>
-                      <td className="num" style={{ textAlign: 'right', padding: '11px 0 11px 12px', borderBottom: bdr, fontSize: 13, fontWeight: m.tipo === 'apertura' ? 400 : 700, color: m.tipo === 'apertura' ? 'var(--ink-2)' : badge.positive ? 'var(--ok-2)' : 'var(--red)' }}>
+                      <td className="num" style={{ textAlign: 'right', padding: '11px 0 11px 12px', borderBottom: bdr, fontSize: 13, fontWeight: m.tipo === 'apertura' ? 400 : 700, color: m.tipo === 'apertura' ? 'var(--ink-2)' : badge.positive ? 'var(--green-2)' : 'var(--red)' }}>
                         {m.tipo === 'apertura' ? fmtMXN(monto) : `${badge.positive ? '+' : '−'}${fmtMXN(monto)}`}
                       </td>
                     </tr>
@@ -548,7 +420,7 @@ export const ReporteCaja: React.FC<ReportProps> = ({ startDate, endDate }) => {
             </thead>
             <tbody>
               {shifts.map(s => {
-                const isClosed = s.cierre !== null;
+                const isClosed = s.isClosed;
                 const cuadrado = Math.abs(s.discrepancy) < 0.01;
                 return (
                   <tr className="vrow" key={s.id}>
@@ -561,9 +433,9 @@ export const ReporteCaja: React.FC<ReportProps> = ({ startDate, endDate }) => {
                         </div>
                       </div>
                     </td>
-                    <td className="num" style={{ padding: '13px 12px', borderBottom: '1px solid var(--line-2)', fontSize: 12.5, color: 'var(--ink-2)' }}>{fmtFecha(s.apertura.fecha)} {fmtHora(s.apertura.fecha)}</td>
+                    <td className="num" style={{ padding: '13px 12px', borderBottom: '1px solid var(--line-2)', fontSize: 12.5, color: 'var(--ink-2)' }}>{fmtFecha(s.aperturaFecha)} {fmtHora(s.aperturaFecha)}</td>
                     <td style={{ padding: '13px 12px', borderBottom: '1px solid var(--line-2)', fontSize: 12.5, color: 'var(--ink-2)' }}>
-                      {isClosed ? <span className="num">{fmtFecha(s.cierre?.fecha)} {fmtHora(s.cierre?.fecha)}</span> : <span className="badge ok" style={{ fontSize: 10 }}><span className="dot" />Activo</span>}
+                      {isClosed ? <span className="num">{fmtFecha(s.cierreFecha)} {fmtHora(s.cierreFecha)}</span> : <span className="badge green" style={{ fontSize: 10 }}><span className="dot" />Activo</span>}
                     </td>
                     <td className="num" style={{ textAlign: 'right', padding: '13px 12px', borderBottom: '1px solid var(--line-2)', fontSize: 12.5, color: 'var(--muted)' }}>{getDurationString(s.durationMs)}</td>
                     <td className="num" style={{ textAlign: 'right', padding: '13px 12px', borderBottom: '1px solid var(--line-2)', fontSize: 13, color: 'var(--ink-2)' }}>{fmtMXN(s.openingCash)}</td>
@@ -574,7 +446,7 @@ export const ReporteCaja: React.FC<ReportProps> = ({ startDate, endDate }) => {
                       ) : cuadrado ? (
                         <span className="badge gray" style={{ fontSize: 10, fontWeight: 600 }}>Cuadrado</span>
                       ) : s.discrepancy > 0 ? (
-                        <span className="badge ok" style={{ fontSize: 10, fontWeight: 700 }}>+{fmtMXN(s.discrepancy)}</span>
+                        <span className="badge green" style={{ fontSize: 10, fontWeight: 700 }}>+{fmtMXN(s.discrepancy)}</span>
                       ) : (
                         <span className="badge red" style={{ fontSize: 10, fontWeight: 700 }}>−{fmtMXN(Math.abs(s.discrepancy))}</span>
                       )}

@@ -1,9 +1,15 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../auth/AuthContext';
 import { Icon } from '../../components/Icon';
 import type { Perfil } from '../../types';
 import { EditarUsuarioModal } from './EditarUsuarioModal';
+import { RestablecerPasswordModal } from './RestablecerPasswordModal';
+import { useSupabasePaginated } from '../../hooks/useSupabasePaginated';
+import { Paginator } from '../../components/Paginator';
+import { extraerMensajeError } from '../../lib/funcionesError';
+
+const PAGE_SIZE = 50;
 
 interface UsuariosListProps {
   /** Cambia este valor desde el padre para forzar una recarga (p.ej. tras crear un usuario). */
@@ -17,7 +23,7 @@ const ROL_LABEL: Record<Perfil['rol'], string> = {
 };
 
 const ROL_BADGE: Record<Perfil['rol'], { bg: string; fg: string }> = {
-  admin: { bg: 'var(--green-soft)', fg: 'var(--green)' },
+  admin: { bg: 'var(--green-soft, oklch(0.95 0.04 145))', fg: 'var(--green)' },
   vendedor: { bg: 'var(--surface-2)', fg: 'var(--ink-2)' },
   visitante: { bg: 'var(--surface-2)', fg: 'var(--muted)' },
 };
@@ -32,38 +38,12 @@ function iniciales(nombre: string): string {
     .toUpperCase();
 }
 
-// Extrae el mensaje legible de un error de supabase.functions.invoke (FunctionsHttpError).
-interface ContextConJson {
-  json: () => Promise<unknown>;
-}
-function tieneContextJson(value: unknown): value is { context: ContextConJson } {
-  if (typeof value !== 'object' || value === null) return false;
-  const ctx = (value as { context?: unknown }).context;
-  return typeof ctx === 'object' && ctx !== null && typeof (ctx as { json?: unknown }).json === 'function';
-}
-async function extraerMensajeError(error: unknown): Promise<string> {
-  if (tieneContextJson(error)) {
-    try {
-      const cuerpo = await error.context.json();
-      if (typeof cuerpo === 'object' && cuerpo !== null && typeof (cuerpo as { error?: unknown }).error === 'string') {
-        return (cuerpo as { error: string }).error;
-      }
-    } catch {
-      /* cae al genérico */
-    }
-  }
-  if (error instanceof Error) return error.message;
-  return 'No se pudo completar la acción.';
-}
-
 type Accion = { tipo: 'eliminar' | 'desactivar'; usuario: Perfil };
 
 export const UsuariosList: React.FC<UsuariosListProps> = ({ refreshKey }) => {
   const { profile } = useAuth();
-  const [usuarios, setUsuarios] = useState<Perfil[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [editando, setEditando] = useState<Perfil | null>(null);
+  const [reseteando, setReseteando] = useState<Perfil | null>(null);
 
   // Confirmación de acción destructiva (eliminar o desactivar).
   const [accion, setAccion] = useState<Accion | null>(null);
@@ -72,26 +52,16 @@ export const UsuariosList: React.FC<UsuariosListProps> = ({ refreshKey }) => {
   // Reactivar es seguro y reversible → directo, con loading por fila.
   const [busyId, setBusyId] = useState<string | null>(null);
 
-  const fetchUsuarios = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    const { data, error } = await supabase
+  const { data: usuarios, count, page, loading, error, setPage, refetch } = useSupabasePaginated<Perfil>(
+    (from, to) => supabase
       .from('perfiles')
-      .select('id, email, nombre, rol, activo, creado_en')
-      .order('creado_en', { ascending: true });
-
-    if (error) {
-      setError('No se pudieron cargar los usuarios.');
-      setUsuarios([]);
-    } else {
-      setUsuarios((data as Perfil[]) ?? []);
-    }
-    setLoading(false);
-  }, []);
-
-  useEffect(() => {
-    fetchUsuarios();
-  }, [fetchUsuarios, refreshKey]);
+      .select('id, email, nombre, rol, etiqueta, plantilla, permisos, activo, creado_en', { count: 'exact' })
+      .order('creado_en', { ascending: true })
+      .order('id', { ascending: true }) // desempate único para una paginación estable
+      .range(from, to),
+    [refreshKey],
+    PAGE_SIZE,
+  );
 
   const handleConfirmAccion = async () => {
     if (!accion) return;
@@ -112,7 +82,7 @@ export const UsuariosList: React.FC<UsuariosListProps> = ({ refreshKey }) => {
         if (error) throw new Error(error.message);
       }
       setAccion(null);
-      fetchUsuarios();
+      refetch();
     } catch (err) {
       setActionError(err instanceof Error ? err.message : 'No se pudo completar la acción.');
     } finally {
@@ -124,7 +94,7 @@ export const UsuariosList: React.FC<UsuariosListProps> = ({ refreshKey }) => {
     setBusyId(u.id);
     const { error } = await supabase.from('perfiles').update({ activo: true }).eq('id', u.id);
     setBusyId(null);
-    if (!error) fetchUsuarios();
+    if (!error) refetch();
   };
 
   const cardStyle: React.CSSProperties = {
@@ -169,7 +139,7 @@ export const UsuariosList: React.FC<UsuariosListProps> = ({ refreshKey }) => {
           Usuarios del sistema
         </h2>
         <span style={{ fontSize: 13, color: 'var(--muted)' }}>
-          {loading ? '—' : `${usuarios.length} ${usuarios.length === 1 ? 'usuario' : 'usuarios'}`}
+          {loading ? '—' : `${count} ${count === 1 ? 'usuario' : 'usuarios'}`}
         </span>
       </div>
 
@@ -196,86 +166,103 @@ export const UsuariosList: React.FC<UsuariosListProps> = ({ refreshKey }) => {
                 style={{
                   display: 'flex',
                   alignItems: 'center',
+                  flexWrap: 'wrap',
                   gap: 12,
                   padding: '12px 20px',
                   borderTop: i === 0 ? 'none' : '1px solid var(--line-2)',
                   opacity: activo ? 1 : 0.6,
                 }}
               >
+                {/* Identidad: avatar + nombre/email + etiqueta de rol.
+                    flex-basis 240px reserva ancho legible para el nombre; si las
+                    acciones no caben a su lado, bajan a una segunda línea (flexWrap
+                    del <li>) en lugar de comprimir el texto hasta "V…". */}
                 <div
                   style={{
-                    width: 38,
-                    height: 38,
-                    borderRadius: '50%',
-                    flex: 'none',
-                    background: 'var(--green-soft)',
-                    color: 'var(--green)',
+                    flex: '1 1 240px',
+                    minWidth: 0,
                     display: 'flex',
                     alignItems: 'center',
-                    justifyContent: 'center',
-                    fontSize: 13,
-                    fontWeight: 700,
+                    gap: 12,
                   }}
                 >
-                  {iniciales(u.nombre)}
-                </div>
+                  <div
+                    style={{
+                      width: 38,
+                      height: 38,
+                      borderRadius: '50%',
+                      flex: 'none',
+                      background: 'var(--green-soft, oklch(0.95 0.04 145))',
+                      color: 'var(--green)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontSize: 13,
+                      fontWeight: 700,
+                    }}
+                  >
+                    {iniciales(u.nombre)}
+                  </div>
 
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span
+                        style={{
+                          fontSize: 14,
+                          fontWeight: 600,
+                          color: 'var(--ink)',
+                          whiteSpace: 'nowrap',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                        }}
+                      >
+                        {u.nombre}
+                      </span>
+                      {esYo && <span style={{ fontSize: 11, color: 'var(--muted)', flex: 'none' }}>(tú)</span>}
+                    </div>
+                    <div
                       style={{
-                        fontSize: 14,
-                        fontWeight: 600,
-                        color: 'var(--ink)',
+                        fontSize: 12,
+                        color: 'var(--muted)',
                         whiteSpace: 'nowrap',
                         overflow: 'hidden',
                         textOverflow: 'ellipsis',
                       }}
                     >
-                      {u.nombre}
-                    </span>
-                    {esYo && <span style={{ fontSize: 11, color: 'var(--muted)', flex: 'none' }}>(tú)</span>}
+                      {u.email}
+                    </div>
                   </div>
-                  <div
-                    style={{
-                      fontSize: 12,
-                      color: 'var(--muted)',
-                      whiteSpace: 'nowrap',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                    }}
-                  >
-                    {u.email}
-                  </div>
-                </div>
 
-                <div style={{ flex: 'none', display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <span
-                    style={{
-                      fontSize: 11,
-                      fontWeight: 600,
-                      padding: '3px 10px',
-                      borderRadius: 999,
-                      background: badge.bg,
-                      color: badge.fg,
-                    }}
-                  >
-                    {ROL_LABEL[u.rol]}
-                  </span>
-                  {!activo && (
+                  <div style={{ flex: 'none', display: 'flex', alignItems: 'center', gap: 6 }}>
                     <span
                       style={{
                         fontSize: 11,
                         fontWeight: 600,
                         padding: '3px 10px',
                         borderRadius: 999,
-                        background: 'var(--red-soft)',
-                        color: 'var(--red)',
+                        background: badge.bg,
+                        color: badge.fg,
+                        whiteSpace: 'nowrap',
                       }}
                     >
-                      Inactivo
+                      {u.etiqueta || ROL_LABEL[u.rol]}
                     </span>
-                  )}
+                    {!activo && (
+                      <span
+                        style={{
+                          fontSize: 11,
+                          fontWeight: 600,
+                          padding: '3px 10px',
+                          borderRadius: 999,
+                          background: 'var(--red-soft)',
+                          color: 'var(--red)',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        Inactivo
+                      </span>
+                    )}
+                  </div>
                 </div>
 
                 {/* Acciones por rol y estado:
@@ -283,7 +270,16 @@ export const UsuariosList: React.FC<UsuariosListProps> = ({ refreshKey }) => {
                     - Vendedor/Admin activo: Editar + Desactivar (soft-delete, conserva ventas).
                     - Vendedor/Admin inactivo: Reactivar + Eliminar.
                     - Tu propia cuenta: solo Editar (anti-bloqueo). */}
-                <div style={{ flex: 'none', display: 'flex', gap: 8 }}>
+                <div
+                  style={{
+                    flex: '0 0 auto',
+                    marginLeft: 'auto',
+                    display: 'flex',
+                    flexWrap: 'wrap',
+                    justifyContent: 'flex-end',
+                    gap: 8,
+                  }}
+                >
                   {esYo ? (
                     <button
                       className="btn btn-secondary"
@@ -295,17 +291,30 @@ export const UsuariosList: React.FC<UsuariosListProps> = ({ refreshKey }) => {
                       Editar
                     </button>
                   ) : esVisitante ? (
-                    <button
-                      style={accionBtn('var(--red)')}
-                      onClick={() => {
-                        setActionError(null);
-                        setAccion({ tipo: 'eliminar', usuario: u });
-                      }}
-                      title="Eliminar usuario"
-                    >
-                      <Icon name="trash" size={14} />
-                      Eliminar
-                    </button>
+                    <>
+                      {activo && (
+                        <button
+                          className="btn btn-secondary"
+                          style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 12px', fontSize: 13 }}
+                          onClick={() => setReseteando(u)}
+                          title="Restablecer contraseña"
+                        >
+                          <Icon name="key" size={14} />
+                          Contraseña
+                        </button>
+                      )}
+                      <button
+                        style={accionBtn('var(--red)')}
+                        onClick={() => {
+                          setActionError(null);
+                          setAccion({ tipo: 'eliminar', usuario: u });
+                        }}
+                        title="Eliminar usuario"
+                      >
+                        <Icon name="trash" size={14} />
+                        Eliminar
+                      </button>
+                    </>
                   ) : activo ? (
                     <>
                       <button
@@ -316,6 +325,15 @@ export const UsuariosList: React.FC<UsuariosListProps> = ({ refreshKey }) => {
                       >
                         <Icon name="edit" size={14} />
                         Editar
+                      </button>
+                      <button
+                        className="btn btn-secondary"
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 12px', fontSize: 13 }}
+                        onClick={() => setReseteando(u)}
+                        title="Restablecer contraseña"
+                      >
+                        <Icon name="key" size={14} />
+                        Contraseña
                       </button>
                       <button
                         style={accionBtn('var(--amber)')}
@@ -359,6 +377,11 @@ export const UsuariosList: React.FC<UsuariosListProps> = ({ refreshKey }) => {
           })}
         </ul>
       )}
+      {!loading && !error && count > PAGE_SIZE && (
+        <div style={{ padding: '4px 20px 12px' }}>
+          <Paginator page={page} pageSize={PAGE_SIZE} count={count} onPage={setPage} />
+        </div>
+      )}
 
       <EditarUsuarioModal
         isOpen={editando !== null}
@@ -367,8 +390,14 @@ export const UsuariosList: React.FC<UsuariosListProps> = ({ refreshKey }) => {
         onClose={() => setEditando(null)}
         onSaved={() => {
           setEditando(null);
-          fetchUsuarios();
+          refetch();
         }}
+      />
+
+      <RestablecerPasswordModal
+        isOpen={reseteando !== null}
+        usuario={reseteando}
+        onClose={() => setReseteando(null)}
       />
 
       {/* Confirmación de eliminar / desactivar */}

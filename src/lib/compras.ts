@@ -28,10 +28,3 @@ export function calcularTotalesOrden(partidas: PartidaOrden[], tasaIva: number):
   const iva = round2(subtotal * Number(tasaIva || 0));
   return { subtotal, iva, total: round2(subtotal + iva) };
 }
-
-/** Folio de orden de compra con formato OC-AAAA-###### (recibe la fecha para ser testeable). */
-export function generarFolioOC(now: Date): string {
-  const year = now.getFullYear();
-  const seq = String(now.getTime()).slice(-6);
-  return `OC-${year}-${seq}`;
-}

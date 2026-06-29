@@ -1,50 +1,38 @@
 import React, { useState, useEffect } from 'react';
 import { Icon } from './Icon';
+import { LogoNegocio } from './LogoNegocio';
 import { useAuth } from '../features/auth/AuthContext';
 import { useConfig } from '../features/config/ConfigContext';
+import { useCan } from '../features/auth/useCan';
+import { NAV_ITEMS } from '../config/navegacion';
 import { supabase } from '../lib/supabase';
+import { CambiarMiPasswordModal } from '../features/auth/CambiarMiPasswordModal';
 
 interface SidebarProps {
-  role: 'admin' | 'vendedor' | 'usuario' | null;
   screen: string;
   onNav: (screen: string) => void;
   onLogout: () => void;
 }
 
-const NAV_ADMIN = [
-  { id: 'dashboard',  label: 'Tablero',        icon: 'home' },
-  { id: 'pos',        label: 'Nueva Venta',    icon: 'cart' },
-  { id: 'caja',       label: 'Caja',           icon: 'cash' },
-  { id: 'clientes',   label: 'Clientes',       icon: 'users' },
-  { id: 'inventario', label: 'Inventario',     icon: 'box' },
-  { id: 'proveedores',label: 'Proveedores',    icon: 'sack' },
-  { id: 'credito',    label: 'Notas a Crédito', icon: 'credit', counterWarn: true },
-  { id: 'reportes',   label: 'Reportes',       icon: 'report' },
-  { id: 'historial-ventas', label: 'Historial de ventas', icon: 'clock' },
-  { id: 'usuarios',   label: 'Usuarios',       icon: 'users' },
-];
+const ROL_LABEL: Record<string, string> = {
+  admin: 'Administrador',
+  vendedor: 'Vendedor',
+  visitante: 'Consulta',
+};
 
-const NAV_VENDEDOR = [
-  { id: 'pos',        label: 'Nueva Venta',    icon: 'cart' },
-  { id: 'caja',       label: 'Caja',           icon: 'cash' },
-  { id: 'clientes',   label: 'Clientes',       icon: 'users' },
-  { id: 'proveedores',label: 'Proveedores',    icon: 'sack' },
-  { id: 'credito',    label: 'Notas a Crédito', icon: 'credit', counterWarn: true },
-  { id: 'historial-ventas', label: 'Historial de ventas', icon: 'clock' },
-];
-
-const NAV_USUARIO = [
-  { id: 'precios',    label: 'Lista de Precios',     icon: 'report' },
-  { id: 'historial',  label: 'Historial de Clientes', icon: 'users' },
-];
-
-export const Sidebar: React.FC<SidebarProps> = ({ role, screen, onNav, onLogout }) => {
+export const Sidebar: React.FC<SidebarProps> = ({ screen, onNav, onLogout }) => {
   const { config } = useConfig();
   const { profile } = useAuth();
-  const nav = role === 'admin' ? NAV_ADMIN : role === 'vendedor' ? NAV_VENDEDOR : NAV_USUARIO;
-  const fullNav = NAV_ADMIN;
+  const can = useCan();
+
+  // Navegación derivada de capacidades: solo se listan los ítems permitidos.
+  const visibles = NAV_ITEMS.filter((i) => can(i.cap));
+  const operacion = visibles.filter((i) => i.grupo === 'operacion');
+  const analisis = visibles.filter((i) => i.grupo === 'analisis');
+  const config_ = visibles.filter((i) => i.grupo === 'config');
 
   const [overdueCount, setOverdueCount] = useState<number>(0);
+  const [cambiarPwOpen, setCambiarPwOpen] = useState(false);
 
   useEffect(() => {
     const fetchOverdueCount = async () => {
@@ -70,23 +58,15 @@ export const Sidebar: React.FC<SidebarProps> = ({ role, screen, onNav, onLogout 
 
     fetchOverdueCount();
 
-    // Listen to changes in pagos_credito and ventas to update in real time
+    // Sincronización en tiempo real con pagos_credito y ventas.
     const channel = supabase
       .channel('sidebar-overdue-changes')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'pagos_credito' },
-        () => {
-          fetchOverdueCount();
-        }
-      )
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'ventas' },
-        () => {
-          fetchOverdueCount();
-        }
-      )
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'pagos_credito' }, () => {
+        fetchOverdueCount();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'ventas' }, () => {
+        fetchOverdueCount();
+      })
       .subscribe();
 
     return () => {
@@ -94,87 +74,76 @@ export const Sidebar: React.FC<SidebarProps> = ({ role, screen, onNav, onLogout 
     };
   }, []);
 
-  let userInfo = {
-    name: 'Visitante',
-    role: 'Sólo precios',
-    initials: 'V'
-  };
-
-  if (profile) {
-    const rolMap: Record<string, string> = {
-      admin: 'Administrador',
-      vendedor: 'Vendedor',
-      visitante: 'Sólo precios'
-    };
+  const userInfo = (() => {
+    if (!profile) return { name: 'Visitante', role: 'Sólo precios', initials: 'V' };
     const initials = profile.nombre
       .split(/\s+/)
       .filter(Boolean)
-      .map(word => word[0])
+      .map((word) => word[0])
       .join('')
       .toUpperCase();
-
-    userInfo = {
+    return {
       name: profile.nombre,
-      role: rolMap[profile.rol] || 'Sólo precios',
-      initials
+      role: profile.etiqueta || ROL_LABEL[profile.rol] || 'Consulta',
+      initials,
     };
-  }
-  if (role === 'usuario') {
+  })();
+
+  const moverFoco = (delta: number) => {
+    const total = visibles.length;
+    const actual = document.activeElement as HTMLElement | null;
+    const idxAttr = actual?.getAttribute('data-nav-index');
+    const actualIdx = idxAttr != null ? Number(idxAttr) : -1;
+    const next = Math.max(0, Math.min(total - 1, (actualIdx < 0 ? 0 : actualIdx) + delta));
+    (document.querySelector(`[data-nav-index="${next}"]`) as HTMLElement | null)?.focus();
+  };
+
+  const onItemKeyDown = (e: React.KeyboardEvent, item: (typeof NAV_ITEMS)[number]) => {
+    if (e.key === 'ArrowDown') { e.preventDefault(); e.stopPropagation(); moverFoco(1); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); e.stopPropagation(); moverFoco(-1); }
+    else if (e.key === 'Home') { e.preventDefault(); e.stopPropagation(); (document.querySelector('[data-nav-index="0"]') as HTMLElement | null)?.focus(); }
+    else if (e.key === 'End') { e.preventDefault(); e.stopPropagation(); (document.querySelector(`[data-nav-index="${visibles.length - 1}"]`) as HTMLElement | null)?.focus(); }
+    else if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault(); e.stopPropagation();
+      onNav(item.id);
+      document.querySelector('.app')?.classList.remove('sidebar-open');
+    }
+  };
+
+  const renderItem = (item: (typeof NAV_ITEMS)[number]) => {
+    const isActive = screen === item.id;
+    const idx = visibles.indexOf(item);
     return (
-      <aside className="sidebar" onClick={e => e.stopPropagation()}>
-        <div className="sidebar-brand">
-          <div className="sidebar-logo">
-            <img src={config.logoUrl} alt={config.nombre} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
-          </div>
-          <div>
-            <div className="sidebar-brand-name">{config.nombre}</div>
-            <div className="sidebar-brand-sub">{config.ciudad}</div>
-          </div>
-        </div>
-
-        <div className="sidebar-scroll">
-          <div className="sidebar-section">Consulta</div>
-          <nav className="sidebar-nav">
-            {nav.map(item => {
-              const isActive = screen === item.id;
-              return (
-                <div
-                  key={item.id}
-                  className={`sidebar-item ${isActive ? 'active' : ''}`}
-                  style={{ cursor: 'pointer' }}
-                  onClick={() => {
-                    onNav(item.id);
-                    document.querySelector('.app')?.classList.remove('sidebar-open');
-                  }}
-                >
-                  <Icon name={item.icon} size={18} style={{ flex: 'none' }} />
-                  <span>{item.label}</span>
-                </div>
-              );
-            })}
-            <div style={{ flex: 1 }} />
-          </nav>
-        </div>
-
-        <div className="sidebar-foot">
-          <div className="avatar">{userInfo.initials}</div>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div className="sidebar-user-name" style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{userInfo.name}</div>
-            <div className="sidebar-user-role">{userInfo.role}</div>
-          </div>
-          <button className="btn-ghost" style={{ padding: 8, borderRadius: 8, color: 'var(--sidebar-muted)' }} onClick={onLogout} title="Cerrar sesión">
-            <Icon name="logout" size={16} />
-          </button>
-        </div>
-      </aside>
+      <div
+        key={item.id}
+        role="menuitem"
+        tabIndex={0}
+        data-nav-index={idx}
+        className={`sidebar-item ${isActive ? 'active' : ''}`}
+        style={{ cursor: 'pointer' }}
+        onKeyDown={(e) => onItemKeyDown(e, item)}
+        onClick={() => {
+          onNav(item.id);
+          document.querySelector('.app')?.classList.remove('sidebar-open');
+        }}
+      >
+        <Icon name={item.icon} size={18} style={{ flex: 'none' }} />
+        <span style={{ flex: 1 }}>{item.label}</span>
+        {item.id === 'credito' && overdueCount > 0 && (
+          <span className={`sidebar-counter ${item.counterWarn ? 'warn' : ''}`}>{overdueCount}</span>
+        )}
+        {idx >= 0 && idx < 9 && (
+          <span className="sidebar-kbd" aria-hidden="true">{idx + 1}</span>
+        )}
+      </div>
     );
-  }
+  };
 
   return (
-    <aside className="sidebar" onClick={e => e.stopPropagation()}>
+    <aside className="sidebar" onClick={(e) => e.stopPropagation()}>
       <div className="sidebar-brand">
         <div className="sidebar-logo">
-          <img src={config.logoUrl} alt={config.nombre} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+          <LogoNegocio logoUrl={config.logoUrl} nombre={config.nombre} fontSize={14} radius={6} />
         </div>
         <div>
           <div className="sidebar-brand-name">{config.nombre}</div>
@@ -183,83 +152,46 @@ export const Sidebar: React.FC<SidebarProps> = ({ role, screen, onNav, onLogout 
       </div>
 
       <div className="sidebar-scroll">
-      <div className="sidebar-section">Operación</div>
-      <nav className="sidebar-nav" style={{flex: 'none'}}>
-        {fullNav.slice(0, 7).map(item => {
-          const allowed = nav.find(n => n.id === item.id);
-          const isActive = screen === item.id;
-          return (
-            <div
-              key={item.id}
-              className={`sidebar-item ${isActive ? 'active' : ''}`}
-              style={{ opacity: allowed ? 1 : 0.45, cursor: allowed ? 'pointer' : 'not-allowed' }}
-              onClick={() => {
-                if (allowed) {
-                  onNav(item.id);
-                  document.querySelector('.app')?.classList.remove('sidebar-open');
-                }
-              }}
-              title={allowed ? '' : 'No disponible para este rol'}
-            >
-              <Icon name={item.icon} size={18} style={{flex: 'none'}} />
-              <span>{item.label}</span>
-              {item.id === 'credito' && overdueCount > 0 && (
-                <span className={`sidebar-counter ${item.counterWarn ? 'warn' : ''}`}>{overdueCount}</span>
-              )}
-            </div>
-          );
-        })}
-      </nav>
-
-      <div className="sidebar-section">Análisis</div>
-      <nav className="sidebar-nav">
-        {fullNav.slice(7).map(item => {
-          const allowed = nav.find(n => n.id === item.id);
-          const isActive = screen === item.id;
-          return (
-            <div
-              key={item.id}
-              className={`sidebar-item ${isActive ? 'active' : ''}`}
-              style={{ opacity: allowed ? 1 : 0.45, cursor: allowed ? 'pointer' : 'not-allowed' }}
-              onClick={() => {
-                if (allowed) {
-                  onNav(item.id);
-                  document.querySelector('.app')?.classList.remove('sidebar-open');
-                }
-              }}
-            >
-              <Icon name={item.icon} size={18} />
-              <span>{item.label}</span>
-            </div>
-          );
-        })}
-        <div style={{flex: 1}} />
-        {role === 'admin' && (
-          <div
-            className={`sidebar-item ${screen === 'configuracion' ? 'active' : ''}`}
-            style={{ cursor: 'pointer' }}
-            onClick={() => {
-              onNav('configuracion');
-              document.querySelector('.app')?.classList.remove('sidebar-open');
-            }}
-          >
-            <Icon name="settings" size={18} />
-            <span>Configuración</span>
-          </div>
+        {operacion.length > 0 && (
+          <>
+            <div className="sidebar-section">Operación</div>
+            <nav className="sidebar-nav" role="menu" style={{ flex: 'none' }}>
+              {operacion.map(renderItem)}
+            </nav>
+          </>
         )}
-      </nav>
+
+        <div className="sidebar-section">{analisis.length > 0 ? 'Análisis' : 'Consulta'}</div>
+        <nav className="sidebar-nav" role="menu">
+          {analisis.map(renderItem)}
+          <div style={{ flex: 1 }} />
+          {config_.map(renderItem)}
+        </nav>
       </div>
 
       <div className="sidebar-foot">
         <div className="avatar">{userInfo.initials}</div>
-        <div style={{flex: 1, minWidth: 0}}>
-          <div className="sidebar-user-name" style={{whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'}}>{userInfo.name}</div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div className="sidebar-user-name" style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{userInfo.name}</div>
           <div className="sidebar-user-role">{userInfo.role}</div>
         </div>
-        <button className="btn-ghost" style={{padding: 8, borderRadius: 8, color: 'var(--sidebar-muted)'}} onClick={onLogout} title="Cerrar sesión">
+        <button
+          className="btn-ghost"
+          style={{ padding: 8, borderRadius: 8, color: 'var(--sidebar-muted)' }}
+          onClick={() => setCambiarPwOpen(true)}
+          title="Cambiar mi contraseña"
+        >
+          <Icon name="key" size={16} />
+        </button>
+        <button className="btn-ghost" style={{ padding: 8, borderRadius: 8, color: 'var(--sidebar-muted)' }} onClick={onLogout} title="Cerrar sesión">
           <Icon name="logout" size={16} />
         </button>
       </div>
+      <CambiarMiPasswordModal
+        isOpen={cambiarPwOpen}
+        email={profile?.email ?? ''}
+        onClose={() => setCambiarPwOpen(false)}
+      />
     </aside>
   );
 };

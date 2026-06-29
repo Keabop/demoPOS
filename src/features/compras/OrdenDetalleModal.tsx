@@ -15,7 +15,7 @@ interface OrdenDetalleModalProps {
 const ESTADO_BADGE: Record<EstadoOrden, { bg: string; fg: string; label: string }> = {
   borrador: { bg: 'var(--surface-2)', fg: 'var(--ink-2)', label: 'Borrador' },
   enviada: { bg: 'var(--amber-soft)', fg: 'oklch(0.5 0.12 70)', label: 'Enviada' },
-  recibida: { bg: 'var(--ok-soft)', fg: 'var(--ok-2)', label: 'Recibida' },
+  recibida: { bg: 'var(--green-soft, oklch(0.95 0.04 145))', fg: 'var(--green-2)', label: 'Recibida' },
   cancelada: { bg: 'var(--red-soft)', fg: 'var(--red)', label: 'Cancelada' },
 };
 
@@ -191,7 +191,7 @@ export const OrdenDetalleModal: React.FC<OrdenDetalleModalProps> = ({ isOpen, or
               )}
 
               {confirmRecibir && (
-                <div style={{ padding: 16, background: 'var(--ok-soft)', border: '1px solid var(--ok-line)', borderRadius: 'var(--radius-sm)' }}>
+                <div style={{ padding: 16, background: 'var(--green-soft, oklch(0.95 0.04 145))', border: '1px solid var(--green-line)', borderRadius: 'var(--radius-sm)' }}>
                   <p style={{ margin: '0 0 12px', fontSize: 13, color: 'var(--ink-2)' }}>
                     Al recibir, cada producto entrará al inventario con su costo y el stock se actualizará. Esta acción no se puede deshacer.
                   </p>

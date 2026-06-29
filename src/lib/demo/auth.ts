@@ -49,4 +49,9 @@ export const auth = {
   },
   async getSession() { return { data: { session: loadSession() }, error: null }; },
   async getUser() { const s = loadSession(); return { data: { user: s ? s.user : null }, error: null }; },
+  async updateUser(_attrs: { password?: string }): Promise<{ data: { user: any }; error: { message: string } | null }> {
+    // Cambio de "mi contraseña": no-op exitoso en la demo (sin auth real).
+    const s = loadSession();
+    return { data: { user: s ? s.user : null }, error: null };
+  },
 };

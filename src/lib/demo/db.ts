@@ -3,7 +3,7 @@
 // esquema y la siembra están cargados a la versión vigente; expone helpers para
 // fijar el GUC de sesión `demo.uid` (lo lee auth.uid()) y para reiniciar la demo.
 import { PGlite } from '@electric-sql/pglite';
-import { DEMO_SCHEMA_SQL } from './schema';
+import { FULL_SCHEMA_SQL } from './schema_all';
 import { DEMO_SEED_SQL, SEED_VERSION } from './seed';
 
 export const IDB_NAME = 'agromar-demo';
@@ -27,7 +27,7 @@ async function init(): Promise<PGlite> {
   if (needsSeed) {
     // Esquema limpio: si había una versión vieja, recreamos desde cero.
     await db.exec(`DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public; DROP SCHEMA IF EXISTS auth CASCADE;`);
-    await db.exec(DEMO_SCHEMA_SQL);
+    await db.exec(FULL_SCHEMA_SQL);
     await db.exec(`CREATE TABLE IF NOT EXISTS _demo_meta (key text primary key, value text);`);
     await db.exec(DEMO_SEED_SQL);
     await db.exec(`INSERT INTO _demo_meta(key,value) VALUES('seed_version','${SEED_VERSION}')
