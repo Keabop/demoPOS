@@ -246,7 +246,7 @@ export const ReporteCobranza: React.FC<ReportProps> = ({ startDate, endDate }) =
     <div style={{ display: 'flex', flexDirection: 'column', gap: 26 }}>
 
       {/* KPIs */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(196px, 100%), 1fr))', gap: 14 }}>
+      <div data-tour="rep-kpis" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(196px, 100%), 1fr))', gap: 14 }}>
         {kpis.map(k => <KpiCard key={k.label} {...k} />)}
       </div>
 

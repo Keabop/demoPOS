@@ -25,7 +25,7 @@ export const Compras: React.FC<ComprasProps> = ({ vendedorId, activo }) => {
     <>
       <Topbar title="Proveedores" subtitle="Proveedores y órdenes de compra" />
       <div className="content" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, background: 'var(--surface-2)', padding: 4, borderRadius: 8, border: '1px solid var(--line)', alignSelf: 'flex-start' }}>
+        <div data-tour="compras-tabs" style={{ display: 'flex', flexWrap: 'wrap', gap: 4, background: 'var(--surface-2)', padding: 4, borderRadius: 8, border: '1px solid var(--line)', alignSelf: 'flex-start' }}>
           {tabs.map((t) => {
             const active = tab === t.id;
             return (

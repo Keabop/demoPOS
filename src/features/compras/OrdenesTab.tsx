@@ -97,7 +97,7 @@ export const OrdenesTab: React.FC<OrdenesTabProps> = ({ vendedorId }) => {
           <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar por folio o proveedor…"
             style={{ flex: 1, border: 0, background: 'transparent', fontSize: 14, outline: 'none' }} />
         </div>
-        <button className="btn btn-primary" style={{ flex: 'none' }} onClick={() => setNuevaOpen(true)}>
+        <button className="btn btn-primary" data-tour="ordenes-nueva" style={{ flex: 'none' }} onClick={() => setNuevaOpen(true)}>
           <Icon name="plus" size={16} />Nueva orden
         </button>
       </div>
@@ -126,7 +126,7 @@ export const OrdenesTab: React.FC<OrdenesTabProps> = ({ vendedorId }) => {
               {ordenes.map((o, i) => {
                 const badge = ESTADO_BADGE[o.estado];
                 return (
-                  <li key={o.id} onClick={() => setDetalleId(o.id)}
+                  <li key={o.id} onClick={() => setDetalleId(o.id)} data-tour={i === 0 ? 'ordenes-fila' : undefined}
                     style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', borderTop: i === 0 ? 'none' : '1px solid var(--line-2)', cursor: 'pointer' }}>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>

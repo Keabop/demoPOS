@@ -327,7 +327,7 @@ export const HistorialVentas: React.FC<HistorialVentasProps> = ({ rol, vendedorI
         </div>
 
         {/* Búsqueda + chips */}
-        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
+        <div data-tour="hv-busqueda" style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
           <div style={{ flex: 1, minWidth: 240, display: 'flex', alignItems: 'center', gap: 10, background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 12, padding: '0 14px', height: 44 }}>
             <Icon name="search" size={18} color="var(--muted)" />
             <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar por folio o cliente…"
@@ -361,7 +361,7 @@ export const HistorialVentas: React.FC<HistorialVentasProps> = ({ rol, vendedorI
           <span style={{ fontSize: 13, color: 'var(--muted)' }}>
             {seleccion.size > 0 ? `${seleccion.size} seleccionadas` : `${count.toLocaleString('es-MX')} ventas`}
           </span>
-          <div style={{ display: 'flex', gap: 8 }}>
+          <div data-tour="hv-export" style={{ display: 'flex', gap: 8 }}>
             <button className="btn btn-secondary" onClick={handleExportExcel} disabled={count === 0}>
               <Icon name="download" size={16} /> Exportar Excel
             </button>
@@ -398,9 +398,9 @@ export const HistorialVentas: React.FC<HistorialVentasProps> = ({ rol, vendedorI
                   </tr>
                 </thead>
                 <tbody>
-                  {ventas.map(v => (
+                  {ventas.map((v, i) => (
                     <React.Fragment key={v.id}>
-                      <tr className="hv-row-main" onClick={() => abrirDetalle(v.id)}>
+                      <tr className="hv-row-main" data-tour={i === 0 ? 'hv-fila' : undefined} onClick={() => abrirDetalle(v.id)}>
                         <td style={{ padding: '12px 8px', borderBottom: '1px solid var(--line-2)' }} onClick={e => e.stopPropagation()}>
                           <input type="checkbox" checked={seleccion.has(v.id)} onChange={() => toggleSel(v.id)} aria-label={`Seleccionar ${v.folio}`} />
                         </td>
@@ -457,7 +457,7 @@ export const HistorialVentas: React.FC<HistorialVentasProps> = ({ rol, vendedorI
                                 ))}
                               </div>
                             )}
-                            <div style={{ marginTop: 12, display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+                            <div data-tour={i === 0 ? 'hv-acciones' : undefined} style={{ marginTop: 12, display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
                               <button type="button" className="btn btn-secondary"
                                 style={{ height: 32, padding: '0 12px', fontSize: 12 }}
                                 onClick={() => reimprimirTicket(v)}>

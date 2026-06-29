@@ -112,7 +112,7 @@ export const Configuracion: React.FC = () => {
             <div className="h3" style={{ margin: 0 }}>Datos de la empresa</div>
           </div>
 
-          {campo('Razón social / Nombre comercial *', 'razon_social')}
+          <div data-tour="cfg-razon-social">{campo('Razón social / Nombre comercial *', 'razon_social')}</div>
           {campo('Descripción (giro)', 'descripcion', true)}
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
@@ -134,7 +134,7 @@ export const Configuracion: React.FC = () => {
 
           {campo('Email', 'email')}
 
-          <div>
+          <div data-tour="cfg-logo">
             <div className="label">Logo</div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
               <div style={{ width: 64, height: 64, borderRadius: 10, border: '1px solid var(--line)', background: 'var(--surface-2)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flex: 'none' }}>
@@ -160,7 +160,7 @@ export const Configuracion: React.FC = () => {
             {campo('Locale', 'locale')}
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, borderTop: '1px solid var(--line)', paddingTop: 12 }}>
+          <div data-tour="cfg-impresion" style={{ display: 'flex', alignItems: 'center', gap: 10, borderTop: '1px solid var(--line)', paddingTop: 12 }}>
             <Icon name="printer" size={18} color="var(--green-2)" />
             <div className="h3" style={{ margin: 0 }}>Impresión (QZ Tray)</div>
           </div>
@@ -200,7 +200,7 @@ export const Configuracion: React.FC = () => {
           </div>
 
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, borderTop: '1px solid var(--line)', paddingTop: 14 }}>
-            <button type="submit" className="btn btn-primary" disabled={saving}>
+            <button type="submit" data-tour="cfg-guardar" className="btn btn-primary" disabled={saving}>
               <Icon name="check" size={16} />
               {saving ? 'Guardando…' : 'Guardar cambios'}
             </button>

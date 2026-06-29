@@ -59,7 +59,7 @@ export const Reportes: React.FC<ReportesProps> = ({ activo }) => {
 
         {/* Tabs + período */}
         <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 18, flexWrap: 'wrap', borderBottom: '1px solid var(--line)', marginBottom: 14 }}>
-          <div className="tabs-scroll" style={{ display: 'flex', gap: 20, overflowX: 'auto', maxWidth: '100%' }}>
+          <div className="tabs-scroll" data-tour="rep-tabs" style={{ display: 'flex', gap: 20, overflowX: 'auto', maxWidth: '100%' }}>
             {tabs.map(tab => (
               <button key={tab.id} className={`tab ${activeTab === tab.id ? 'active' : ''}`} onClick={() => setActiveTab(tab.id)}>
                 <Icon name={tab.icon} size={17} />
@@ -67,7 +67,7 @@ export const Reportes: React.FC<ReportesProps> = ({ activo }) => {
               </button>
             ))}
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'var(--surface-2)', border: '1px solid var(--line)', padding: 4, borderRadius: 9, marginBottom: 8, flex: 'none' }}>
+          <div data-tour="rep-periodo" style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'var(--surface-2)', border: '1px solid var(--line)', padding: 4, borderRadius: 9, marginBottom: 8, flex: 'none' }}>
             {periods.map(p => (
               <button key={p.id} className={`seg ${dateRange === p.id ? 'active' : ''}`} onClick={() => setDateRange(p.id)}>{p.label}</button>
             ))}

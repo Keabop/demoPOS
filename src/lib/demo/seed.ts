@@ -17,7 +17,7 @@
 //    (el trigger ya baja saldo, salda la venta si procede e inserta el movimiento de caja).
 //  - iva=0 y total=subtotal en el historial (AGROMAR opera sin IVA; el IVA se demuestra en
 //    ventas NUEVAS desde el POS, con configuracion.iva_default=0.16).
-export const SEED_VERSION = '2.0.0';
+export const SEED_VERSION = '2.1.0';
 
 export const DEMO_SEED_SQL = /* sql */ `
 -- ===== Sesión: el vendedor activo durante la siembra es el técnico/mostrador (0002) =====
@@ -317,6 +317,65 @@ INSERT INTO movimientos_caja(vendedor_id,tipo,monto,descripcion,metodo,categoria
 UPDATE productos SET precio_credito = round(precio_publico * 1.06, 2),
                      precio_subdistribuidor = precio_mayoreo
 WHERE precio_credito = 0;
+
+-- =====================================================================================
+-- COMPRAS A PROVEEDORES (G7) — dan contenido a Proveedores → "Órdenes de compra" y
+-- "Compras locales". NINGUNA toca caja. Las recepciones y compras locales SOLO SUMAN
+-- inventario y SOLO sobre productos con stock holgado, por lo que NO alteran las alertas
+-- de agotado (d013, d015) ni de bajo mínimo (d009, d00d, d014, d019).
+-- Folios: se dejan a la secuencia compartida seq_folio_orden (formales 1-3, locales 4-5).
+-- =====================================================================================
+
+-- Proveedor LOCAL (mostrador del pueblo): es el caso de uso natural de la "compra local"
+-- (remisión/pagaré), frente a los distribuidores formales (Yara/Bayer/FMC/Semillas).
+INSERT INTO proveedores(id,nombre,contacto,telefono,email,direccion,rfc,activo,local) VALUES
+ ('00000000-0000-0000-0000-00000000a005','Agroinsumos La Parcela','Mostrador','462 626 1199','laparcela@correo.mx','Av. Insurgentes 210, Irapuato, Gto.','APA180101AAA',true,true);
+
+-- ----- Órdenes de compra FORMALES (a distribuidores; folio por secuencia) -----
+-- OC ENVIADA (a004 FMC): resurtido de lo que va bajo de inventario; SIN recibir (no toca stock).
+INSERT INTO ordenes_compra(id,proveedor_id,estado,tipo,fecha,tasa_iva,subtotal,iva,total,instrucciones,creado_por) VALUES
+ ('00000000-0000-0000-0000-00000000b001','00000000-0000-0000-0000-00000000a004','enviada','formal',now()-interval '5 days',0,13840,0,13840,'Resurtido de insecticidas y equipo de aplicación. Entregar en bodega.','00000000-0000-0000-0000-000000000002');
+INSERT INTO ordenes_compra_detalles(orden_id,producto_id,descripcion,presentacion,cantidad,precio_unitario,subtotal) VALUES
+ ('00000000-0000-0000-0000-00000000b001','00000000-0000-0000-0000-00000000d009','Paraquat 200 (garrafa 5 L)','garrafa',10,790,7900),
+ ('00000000-0000-0000-0000-00000000b001','00000000-0000-0000-0000-00000000d00d','Cipermetrina 200 (litro)','litro',12,215,2580),
+ ('00000000-0000-0000-0000-00000000b001','00000000-0000-0000-0000-00000000d019','Aspersora de Mochila 20 L','pieza',6,560,3360);
+
+-- OC BORRADOR (a001 Yara): pedido grande de fertilizantes en preparación; SIN enviar/recibir.
+INSERT INTO ordenes_compra(id,proveedor_id,estado,tipo,fecha,tasa_iva,subtotal,iva,total,instrucciones,creado_por) VALUES
+ ('00000000-0000-0000-0000-00000000b002','00000000-0000-0000-0000-00000000a001','borrador','formal',now()-interval '2 days',0,76900,0,76900,'Pedido de temporada. Confirmar disponibilidad de DAP antes de enviar.','00000000-0000-0000-0000-000000000002');
+INSERT INTO ordenes_compra_detalles(orden_id,producto_id,descripcion,presentacion,cantidad,precio_unitario,subtotal) VALUES
+ ('00000000-0000-0000-0000-00000000b002','00000000-0000-0000-0000-00000000d001','Urea 46% (bulto 50 kg)','bulto',50,690,34500),
+ ('00000000-0000-0000-0000-00000000b002','00000000-0000-0000-0000-00000000d002','MAP 18-46-00 (bulto 50 kg)','bulto',30,860,25800),
+ ('00000000-0000-0000-0000-00000000b002','00000000-0000-0000-0000-00000000d006','Triple 17 (17-17-17) (50 kg)','bulto',20,830,16600);
+
+-- OC RECIBIDA (a002 Bayer): se inserta como 'enviada' y se RECIBE con la función real
+-- (suma inventario, fija fecha_recepcion y alimenta el KPI "Total comprado"). Productos
+-- holgados y cantidades chicas: d007 20→24 (mín 5), d010 13→16 (mín 6) — sin nuevas alertas.
+INSERT INTO ordenes_compra(id,proveedor_id,estado,tipo,fecha,tasa_iva,subtotal,iva,total,instrucciones,creado_por) VALUES
+ ('00000000-0000-0000-0000-00000000b003','00000000-0000-0000-0000-00000000a002','enviada','formal',now()-interval '8 days',0,7550,0,7550,'Surtir en una sola entrega.','00000000-0000-0000-0000-000000000002');
+INSERT INTO ordenes_compra_detalles(orden_id,producto_id,descripcion,presentacion,cantidad,precio_unitario,subtotal) VALUES
+ ('00000000-0000-0000-0000-00000000b003','00000000-0000-0000-0000-00000000d007','Glifosato 360 (tambo 20 L)','tambo',4,1250,5000),
+ ('00000000-0000-0000-0000-00000000b003','00000000-0000-0000-0000-00000000d010','Azoxistrobina 250 (litro)','litro',3,850,2550);
+SELECT fn_recibir_orden_compra('00000000-0000-0000-0000-00000000b003');
+
+-- ----- COMPRAS LOCALES (al proveedor local a005; función real: inventario + cuentas por pagar) -----
+-- Compra de CONTADO (pagada): entra a inventario, sin saldo por pagar. (d01b 54→74, d016 97→107, d011 31→39)
+SELECT fn_registrar_compra_local(
+  '00000000-0000-0000-0000-00000000a005','I-48213','contado',
+  now()-interval '20 days', NULL,
+  '[{"producto_id":"00000000-0000-0000-0000-00000000d01b","cantidad":20,"costo_unitario":55,"tasa_ieps":0},
+    {"producto_id":"00000000-0000-0000-0000-00000000d016","cantidad":10,"costo_unitario":140,"tasa_ieps":0},
+    {"producto_id":"00000000-0000-0000-0000-00000000d011","cantidad":8,"costo_unitario":150,"tasa_ieps":0}]'::jsonb,
+  false);
+
+-- Compra a CRÉDITO (pagaré con vencimiento futuro): queda saldo por pagar > 0 → el KPI
+-- "Por pagar a proveedores" y el botón "Registrar pago" quedan visibles. (d005 89→104, d001 116→126)
+SELECT fn_registrar_compra_local(
+  '00000000-0000-0000-0000-00000000a005','I-49001','credito',
+  now()-interval '12 days', (now()+interval '18 days')::date,
+  '[{"producto_id":"00000000-0000-0000-0000-00000000d005","cantidad":15,"costo_unitario":450,"tasa_ieps":0},
+    {"producto_id":"00000000-0000-0000-0000-00000000d001","cantidad":10,"costo_unitario":690,"tasa_ieps":0}]'::jsonb,
+  false);
 
 -- ===== Continuar las secuencias de folio tras lo sembrado (ventas nuevas → V-0015…, abonos → P-0003…) =====
 SELECT setval('seq_folio_venta', 14);

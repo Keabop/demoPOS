@@ -88,12 +88,12 @@ export const Bitacora: React.FC = () => {
     <>
       <Topbar title="Bitácora de auditoría" subtitle="Registro de cambios del sistema (solo administrador)" />
       <div style={{ padding: 16 }}>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
+        <div data-tour="aud-filtros" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
           <select className="input" value={tabla} onChange={(e) => setTabla(e.target.value)} style={{ maxWidth: 240 }}>
             <option value="todos">Todas las tablas</option>
             {TABLAS.map((t) => <option key={t} value={t}>{t}</option>)}
           </select>
-          <select className="input" value={operacion} onChange={(e) => setOperacion(e.target.value)} style={{ maxWidth: 180 }}>
+          <select className="input" data-tour="aud-operacion" value={operacion} onChange={(e) => setOperacion(e.target.value)} style={{ maxWidth: 180 }}>
             <option value="todos">Toda operación</option>
             <option value="INSERT">Alta</option>
             <option value="UPDATE">Cambio</option>
@@ -118,7 +118,7 @@ export const Bitacora: React.FC = () => {
               </tr>
             </thead>
             <tbody>
-              {rows.map((r) => (
+              {rows.map((r, index) => (
                 <React.Fragment key={r.id}>
                   <tr>
                     <td style={tdStyle}>{formatFechaHoraMX(r.ocurrido_en)}</td>
@@ -127,7 +127,7 @@ export const Bitacora: React.FC = () => {
                     <td style={tdStyle}><span style={opBadge(r.operacion)}>{OP_LABEL[r.operacion] ?? r.operacion}</span></td>
                     <td style={{ ...tdStyle, fontFamily: 'monospace', fontSize: 11, maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.registro_id ?? '—'}</td>
                     <td style={tdStyle}>
-                      <button className="btn-ghost" style={{ padding: '4px 8px', fontSize: 12 }} onClick={() => setExpandedId(expandedId === r.id ? null : r.id)}>
+                      <button className="btn-ghost" data-tour={index === 0 ? 'aud-detalle' : undefined} style={{ padding: '4px 8px', fontSize: 12 }} onClick={() => setExpandedId(expandedId === r.id ? null : r.id)}>
                         {expandedId === r.id ? 'Ocultar' : 'Ver'}
                       </button>
                     </td>

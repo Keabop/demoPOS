@@ -163,6 +163,7 @@ export const UsuariosList: React.FC<UsuariosListProps> = ({ refreshKey }) => {
             return (
               <li
                 key={u.id}
+                data-tour={i === 0 ? 'usr-fila' : undefined}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
@@ -271,6 +272,7 @@ export const UsuariosList: React.FC<UsuariosListProps> = ({ refreshKey }) => {
                     - Vendedor/Admin inactivo: Reactivar + Eliminar.
                     - Tu propia cuenta: solo Editar (anti-bloqueo). */}
                 <div
+                  data-tour={i === 0 ? 'usr-acciones' : undefined}
                   style={{
                     flex: '0 0 auto',
                     marginLeft: 'auto',

@@ -61,7 +61,7 @@ export const ComprasLocalesTab: React.FC = () => {
           <div style={{ fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.04em', fontWeight: 600 }}>Total comprado</div>
           <div className="num" style={{ fontSize: 22, fontWeight: 800, marginTop: 4, color: 'var(--green-2)' }}>{fmtMXN(kpis.comprado)}</div>
         </div>
-        <div className="card" style={{ padding: 16 }}>
+        <div className="card" data-tour="locales-porpagar" style={{ padding: 16 }}>
           <div style={{ fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.04em', fontWeight: 600 }}>Por pagar a proveedores</div>
           <div className="num" style={{ fontSize: 22, fontWeight: 800, marginTop: 4, color: kpis.por_pagar > 0 ? 'var(--red)' : 'var(--ink)' }}>{fmtMXN(kpis.por_pagar)}</div>
         </div>
@@ -74,7 +74,7 @@ export const ComprasLocalesTab: React.FC = () => {
           <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar por folio, folio del comercio o proveedor…"
             style={{ flex: 1, border: 0, background: 'transparent', fontSize: 14, outline: 'none' }} />
         </div>
-        <button className="btn btn-primary" style={{ flex: 'none' }} onClick={() => setNuevaOpen(true)}>
+        <button className="btn btn-primary" data-tour="locales-nueva" style={{ flex: 'none' }} onClick={() => setNuevaOpen(true)}>
           <Icon name="plus" size={16} />Nueva compra local
         </button>
       </div>
@@ -114,7 +114,7 @@ export const ComprasLocalesTab: React.FC = () => {
                     </div>
                     <div className="num" style={{ flex: 'none', fontWeight: 700, fontSize: 14 }}>{fmtMXN(c.total)}</div>
                     {esCredito && !pagada && (
-                      <button className="btn btn-secondary" style={{ flex: 'none', height: 34, padding: '0 12px', fontSize: 13 }} onClick={() => setPagoRow(c)}>
+                      <button className="btn btn-secondary" data-tour="locales-pago" style={{ flex: 'none', height: 34, padding: '0 12px', fontSize: 13 }} onClick={() => setPagoRow(c)}>
                         Registrar pago
                       </button>
                     )}

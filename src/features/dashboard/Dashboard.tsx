@@ -212,7 +212,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNav, activo }) => {
 
       <div className="content">
         {/* KPI grid */}
-        <div className="catalog-kpis-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 24 }}>
+        <div className="catalog-kpis-grid" data-tour="dash-kpis" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 24 }}>
           {cards.map(c => {
             const a = accentMap[c.accent];
             return (
@@ -238,7 +238,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNav, activo }) => {
         </div>
 
         {/* Acciones rápidas */}
-        <div className="card" style={{ padding: 18, marginBottom: 24 }}>
+        <div className="card" data-tour="dash-acciones" style={{ padding: 18, marginBottom: 24 }}>
           <div className="h3" style={{ marginBottom: 14 }}>Acciones rápidas</div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 12 }}>
             {[
@@ -266,7 +266,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNav, activo }) => {
                   {timeRange === 'semana' ? 'Registro semanal de transacciones' : timeRange === 'mes' ? 'Registro agrupado por semanas' : 'Registro anual agrupado por meses'}
                 </div>
               </div>
-              <div style={{ display: 'flex', gap: 4, padding: 4, background: 'var(--surface-2)', borderRadius: 8, border: '1px solid var(--line)' }}>
+              <div data-tour="dash-rango" style={{ display: 'flex', gap: 4, padding: 4, background: 'var(--surface-2)', borderRadius: 8, border: '1px solid var(--line)' }}>
                 {(['semana', 'mes', 'ano'] as const).map((r) => {
                   const labelMap = { semana: 'Semana', mes: 'Mes', ano: 'Año' };
                   const active = timeRange === r;
@@ -409,7 +409,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNav, activo }) => {
             )}
           </div>
 
-          <div className="card" style={{ padding: 22, background: overdueCount > 0 ? 'linear-gradient(160deg, oklch(0.97 0.04 25) 0%, var(--surface) 60%)' : 'linear-gradient(160deg, var(--green-soft) 0%, var(--surface) 60%)' }}>
+          <div className="card" data-tour="dash-alertas" style={{ padding: 22, background: overdueCount > 0 ? 'linear-gradient(160deg, oklch(0.97 0.04 25) 0%, var(--surface) 60%)' : 'linear-gradient(160deg, var(--green-soft) 0%, var(--surface) 60%)' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
               <Icon name={overdueCount > 0 ? 'alert' : 'check'} size={18} color={overdueCount > 0 ? 'var(--red)' : 'var(--green)'} />
               <div className="h3" style={{ color: overdueCount > 0 ? 'var(--red)' : 'var(--green-2)' }}>

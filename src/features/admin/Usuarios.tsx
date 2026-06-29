@@ -87,6 +87,7 @@ export const Usuarios: React.FC = () => {
           </p>
 
           <button
+            data-tour="usr-crear"
             className="btn btn-primary"
             style={{
               width: '100%',

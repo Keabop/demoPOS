@@ -61,16 +61,11 @@ export const Precios: React.FC<PreciosProps> = ({ activo }) => {
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     cargarMeta();
-    // Actualización en tiempo real del catálogo.
-    const channel = supabase
-      .channel('precios-realtime-changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'productos' }, () => {
-        cargarMeta();
-        refetch();
-      })
-      .subscribe();
-    return () => { supabase.removeChannel(channel); };
-  }, [cargarMeta, refetch]);
+    // Nota: el catálogo se refresca al regresar a la pantalla vía useAlActivar (abajo),
+    // igual que el Catálogo de inventario. En la demo no se suscribe un canal realtime:
+    // el bus de tiempo real del shim es global (no filtra por tabla) y, combinado con el
+    // refetch del propio canal, mantenía esta lista en "Cargando…" de forma indefinida.
+  }, [cargarMeta]);
 
   // Keep-alive: al regresar a esta pantalla, refresca catálogo y metadatos del servidor.
   useAlActivar(activo ?? true, () => { cargarMeta(); refetch(); });
@@ -92,6 +87,7 @@ export const Precios: React.FC<PreciosProps> = ({ activo }) => {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 12, alignItems: 'center' }}>
             {/* Buscador */}
             <div
+              data-tour="precios-buscar"
               style={{
                 display: 'flex',
                 alignItems: 'center',
@@ -179,7 +175,7 @@ export const Precios: React.FC<PreciosProps> = ({ activo }) => {
           ) : (
             <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 600 }}>
-                <thead>
+                <thead data-tour="precios-niveles">
                   <tr
                     style={{
                       color: 'var(--muted)',
@@ -197,7 +193,7 @@ export const Precios: React.FC<PreciosProps> = ({ activo }) => {
                     <th style={{ textAlign: 'right', padding: '12px 12px', fontWeight: 600 }}>Contado</th>
                     <th style={{ textAlign: 'right', padding: '12px 12px', fontWeight: 600 }}>Crédito</th>
                     <th style={{ textAlign: 'right', padding: '12px 12px', fontWeight: 600 }}>Subdistribuidor</th>
-                    <th style={{ textAlign: 'right', padding: '12px 18px', fontWeight: 600 }}>IEPS</th>
+                    <th data-tour="precios-ieps" style={{ textAlign: 'right', padding: '12px 18px', fontWeight: 600 }}>IEPS</th>
                   </tr>
                 </thead>
                 <tbody>

@@ -47,3 +47,113 @@
 .driver-popover.tour-amber .driver-popover-arrow {
   border-color: #ffffff;
 }
+
+/* ───────── Menú de capítulos del tutorial (overlay propio) ───────── */
+.tourmenu-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  background: rgba(20, 19, 13, 0.72);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  animation: tourmenu-fade .18s ease;
+}
+@keyframes tourmenu-fade { from { opacity: 0; } to { opacity: 1; } }
+.tourmenu-panel {
+  width: 100%;
+  max-width: 560px;
+  max-height: 86vh;
+  overflow-y: auto;
+  background: #fbf8f1;
+  border-radius: 16px;
+  box-shadow: 0 24px 60px -12px rgba(20, 19, 13, .5);
+  padding: 22px 22px 16px;
+  font-family: 'Manrope', system-ui, sans-serif;
+}
+.tourmenu-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.tourmenu-title {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 800;
+  color: #14191a;
+  letter-spacing: -.2px;
+}
+.tourmenu-sub {
+  margin: 3px 0 0;
+  font-size: 13px;
+  color: #6f6a5d;
+  line-height: 1.45;
+}
+.tourmenu-close {
+  flex: 0 0 auto;
+  background: transparent;
+  border: 1px solid #e7e1d4;
+  border-radius: 9px;
+  color: #8a8474;
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  transition: background .15s, color .15s;
+}
+.tourmenu-close:hover { background: #f1ece1; color: #4a463c; }
+.tourmenu-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(238px, 1fr));
+  gap: 10px;
+}
+.tourmenu-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  text-align: left;
+  background: #ffffff;
+  border: 1px solid #ece7db;
+  border-radius: 12px;
+  padding: 12px 12px;
+  cursor: pointer;
+  transition: border-color .15s, box-shadow .15s, transform .12s, background .15s;
+}
+.tourmenu-card:hover {
+  border-color: oklch(0.69 0.14 76);
+  background: #fffdf8;
+  box-shadow: 0 6px 18px -8px rgba(120, 90, 20, .35);
+  transform: translateY(-1px);
+}
+.tourmenu-ico {
+  flex: 0 0 auto;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  background: oklch(0.93 0.05 80);
+  color: oklch(0.5 0.12 72);
+}
+.tourmenu-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1 1 auto; }
+.tourmenu-tit {
+  font-size: 14px;
+  font-weight: 700;
+  color: #14191a;
+  line-height: 1.25;
+}
+.tourmenu-num { color: oklch(0.6 0.13 72); font-weight: 800; }
+.tourmenu-res { font-size: 12px; color: #807a6c; line-height: 1.35; }
+.tourmenu-arrow { flex: 0 0 auto; color: #c3bdac; display: grid; place-items: center; }
+.tourmenu-card:hover .tourmenu-arrow { color: oklch(0.69 0.14 76); }
+.tourmenu-foot {
+  margin: 16px 2px 2px;
+  font-size: 11.5px;
+  color: #9a9486;
+  text-align: center;
+  line-height: 1.45;
+}

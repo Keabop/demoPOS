@@ -99,7 +99,7 @@ export const ProveedoresTab: React.FC<ProveedoresTabProps> = ({ activo }) => {
             onKeyDown={(e) => { if (e.key === 'ArrowDown') { e.preventDefault(); (e.currentTarget.closest('[data-keepalive]') ?? document).querySelector<HTMLElement>('[data-nav-index="0"]')?.focus(); } }}
             style={{ flex: 1, border: 0, background: 'transparent', fontSize: 14, outline: 'none' }} />
         </div>
-        <button className="btn btn-primary" style={{ flex: 'none' }} onClick={() => { setEditando(null); setModalOpen(true); }}>
+        <button className="btn btn-primary" data-tour="prov-nuevo" style={{ flex: 'none' }} onClick={() => { setEditando(null); setModalOpen(true); }}>
           <Icon name="plus" size={16} />
           Nuevo proveedor
         </button>
@@ -140,7 +140,7 @@ export const ProveedoresTab: React.FC<ProveedoresTabProps> = ({ activo }) => {
                   )}
                 </div>
                 <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
-                  <button className="btn btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 12px', fontSize: 13 }}
+                  <button className="btn btn-primary" data-tour={i === 0 ? 'prov-productos' : undefined} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 12px', fontSize: 13 }}
                     onClick={() => setPerfil(p)}>
                     <Icon name="sack" size={14} />Productos
                   </button>

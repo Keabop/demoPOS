@@ -684,6 +684,7 @@ export const Caja: React.FC<CajaProps> = ({ activo }) => {
 
               <button
                 type="submit"
+                data-tour="caja-abrir"
                 className="btn btn-primary"
                 disabled={isOpening}
                 style={{ height: 48, fontSize: 14, fontWeight: 600, marginTop: 8 }}
@@ -807,7 +808,7 @@ export const Caja: React.FC<CajaProps> = ({ activo }) => {
           <Icon name="clock" size={16} />
           Actualizar
         </button>
-        <button className="btn btn-primary" onClick={() => setShowManualModal(true)}>
+        <button className="btn btn-primary" data-tour="caja-mov-manual" onClick={() => setShowManualModal(true)}>
           <Icon name="plus" size={16} />
           Ingresar / Retirar Efectivo
         </button>
@@ -834,7 +835,7 @@ export const Caja: React.FC<CajaProps> = ({ activo }) => {
           {/* LEFT COLUMN: DETAILS & TIMELINE */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
             {/* CASH FLOW DETAILED STATEMENT */}
-            <div className="card" style={{ padding: 24 }}>
+            <div className="card" data-tour="caja-resumen" style={{ padding: 24 }}>
               <div style={{ fontWeight: 700, fontSize: 15, borderBottom: '2px solid var(--line)', paddingBottom: 10, marginBottom: 14 }}>
                 Resumen de Efectivo en Caja
               </div>
@@ -1519,6 +1520,7 @@ export const Caja: React.FC<CajaProps> = ({ activo }) => {
 
                 <button
                   type="button"
+                  data-tour="caja-corte"
                   className="btn btn-primary"
                   style={{ background: 'var(--red)', borderColor: 'var(--red)', height: 44, fontWeight: 600, marginTop: 8 }}
                   disabled={!corteCounted}
